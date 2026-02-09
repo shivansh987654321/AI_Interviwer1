@@ -52,7 +52,7 @@ class GeminiService {
     try {
       const completion = await this.groq.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
-        model: 'llama-3.3-70b-versatile',
+        model: 'llama-3.1-8b-instant',
         temperature: 0.7,
       });
       return JSON.parse(this.cleanJson(completion.choices[0]?.message?.content || '{}'));
@@ -101,7 +101,7 @@ class GeminiService {
     try {
       const completion = await this.groq.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
-        model: 'llama-3.3-70b-versatile',
+        model: 'llama-3.1-8b-instant',
         temperature: 0.2,
       });
       return JSON.parse(this.cleanJson(completion.choices[0]?.message?.content || '{}'));
@@ -139,7 +139,7 @@ class GeminiService {
     try {
       const completion = await this.groq.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
-        model: 'llama-3.3-70b-versatile',
+        model: 'llama-3.1-8b-instant',
         temperature: 0.7,
       });
       return JSON.parse(this.cleanJson(completion.choices[0]?.message?.content || '{}'));
@@ -151,6 +151,63 @@ class GeminiService {
       };
     }
   }
-}
+  // ... existing code ...
+
+  // =================================================================
+  // PHASE 1-3: VERBAL CONVERSATION (The Missing Logic)
+  // =================================================================
+  // =================================================================
+  // PHASE 1-3: VERBAL CONVERSATION (Fixed Logic)
+  // =================================================================
+  async generateVerbalResponse(history: any[], userTranscript: string): Promise<{ text: string; action?: string }> {
+    const isStart = history.length === 0 || userTranscript === "START_INTERVIEW";
+    
+    const prompt = `
+      ROLE: Friendly but professional FAANG Interviewer (Alex).
+      TASK: Conduct a short pre-coding verbal interview.
+      
+      CONTEXT:
+      - You are the interviewer. The candidate is speaking to you.
+      - Current History: ${JSON.stringify(history)}
+      - Candidate just said: "${userTranscript}"
+
+      INSTRUCTIONS:
+      1. CRITICAL: Check the HISTORY. 
+         - If the history is empty, Introduce yourself (Alex from FAANG) and ask about their background.
+         - If you have ALREADY introduced yourself in the history, DO NOT introduce yourself again.
+      
+      2. FLOW:
+         - If the candidate answered the background question, move to ONE technical theory question (e.g., "What is the difference between an Array and a Linked List?").
+         - If they answered the theory question reasonably well, say "That's great. Let's move on to the coding problem." and set "action": "START_CODING".
+      
+      3. TONE:
+         - Keep responses conversational and BRIEF (max 2 sentences).
+         - Do not be robotic.
+
+      OUTPUT JSON ONLY:
+      {
+        "text": "Your verbal response here...",
+        "action": "CONTINUE" or "START_CODING"
+      }
+    `;
+
+    try {
+      const completion = await this.groq.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'llama-3.1-8b-instant', // or 'mixtral-8x7b-32768'
+        temperature: 0.6,
+      });
+      return JSON.parse(this.cleanJson(completion.choices[0]?.message?.content || '{}'));
+    } catch (err) {
+      console.error("Verbal Gen Error:", err);
+      return { text: "I didn't catch that. Could you repeat?", action: "CONTINUE" };
+    }
+  }
+
+} // End of Class}
+
+
+
+
 
 export default new GeminiService();

@@ -1,137 +1,100 @@
 import { Server, Socket } from 'socket.io';
-import Groq from 'groq-sdk';
+import geminiService from '../services/gemini.service';
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || '' });
-
-// --- SESSION MEMORY (Prevents "Hello" loop on reconnect) ---
+// --- SESSION MEMORY ---
 interface SessionState {
-  phase: 'intro' | 'hr' | 'technical' | 'coding' | 'closure';
-  transcript: string[];
-  turnCount: number;
+  history: { role: 'user' | 'assistant' | 'system'; content: string }[];
+  phase: 'intro' | 'verbal' | 'coding';
 }
+
+// Global memory to store chat history
 const activeSessions = new Map<string, SessionState>();
 
 export const initializeInterviewSocket = (io: Server) => {
-  io.on('connection', (socket: Socket) => {
+  const interviewNamespace = io.of('/'); 
+
+  interviewNamespace.on('connection', (socket: Socket) => {
     console.log(`🔌 Client connected: ${socket.id}`);
 
-    // --- 1. JOIN SESSION ---
+    // --- 1. START/JOIN SESSION ---
     socket.on('start_voice_interview', async ({ sessionId }) => {
-      socket.join(sessionId); 
+      if (!sessionId) return;
+      
+      socket.join(sessionId);
 
-      // Check if we already know this user
+      // Check if session exists in memory
       let state = activeSessions.get(sessionId);
 
       if (!state) {
-        // NEW USER: Initialize state
-        state = { phase: 'intro', transcript: [], turnCount: 0 };
+        // ✨ NEW SESSION
+        console.log(`✨ Creating NEW Session: ${sessionId}`);
+        state = { history: [], phase: 'intro' };
         activeSessions.set(sessionId, state);
-        
-        // Generate Dynamic Opening
-        const greeting = await generateAIResponse(
-          "Start the interview. Greet the candidate professionally and ask for a brief introduction.", 
-          'intro', 
-          []
-        );
-        speakAndLog(io, sessionId, greeting, state);
+
+        try {
+          // Generate the First Greeting
+          const aiResponse = await geminiService.generateVerbalResponse([], "START_INTERVIEW");
+          
+          state.history.push({ role: 'assistant', content: aiResponse.text });
+          socket.emit('ai_speak', { text: aiResponse.text });
+        } catch (error) {
+          socket.emit('ai_speak', { text: "Hello! I am Alex. Could you tell me about your background?" });
+        }
       } else {
-        console.log(`🔄 Resuming session ${sessionId} at phase ${state.phase}`);
-        // Optionally welcome them back if needed, but usually better to stay silent
+        // 🔄 RESUMING SESSION
+        console.log(`🔄 Resumed Session: ${sessionId} (History Length: ${state.history.length})`);
+        // We do NOT emit 'ai_speak' here, so the AI stays silent and waits for the user
       }
     });
 
     // --- 2. HANDLE USER SPEECH ---
-    socket.on('user_speak', async (data: { text: string }) => {
-      // Find the user's session from the socket rooms
-      const sessionId = Array.from(socket.rooms).find(r => r !== socket.id);
-      if (!sessionId) return;
-
-      const state = activeSessions.get(sessionId);
-      if (!state) return;
-
-      console.log(`🗣️ User (${state.phase}): ${data.text}`);
-      state.transcript.push(`User: ${data.text}`);
-      state.turnCount++;
-
-      // --- PHASE TRANSITION LOGIC ---
+    socket.on('user_speak', async (data: { text: string, sessionId: string }) => {
+      const { text, sessionId } = data;
       
-      // Phase 1: Intro -> HR (After 2 turns)
-      if (state.phase === 'intro' && state.turnCount >= 2) {
-        state.phase = 'hr';
-        state.turnCount = 0;
-        const msg = "Thank you. Let's move to behavioral questions. Why do you want to join our company?";
-        await speakAndLog(io, sessionId, msg, state);
-        return;
+      if (!sessionId || !activeSessions.has(sessionId)) {
+        // If server restarted, we might lose the session. 
+        // silently re-create it to prevent crash, but don't reset intro.
+        if (sessionId && !activeSessions.has(sessionId)) {
+             activeSessions.set(sessionId, { history: [], phase: 'intro' });
+        }
       }
 
-      // Phase 2: HR -> Technical (After 3 turns)
-      if (state.phase === 'hr' && state.turnCount >= 3) {
-        state.phase = 'technical';
-        state.turnCount = 0;
-        const msg = "Understood. Let's switch to technical topics. Can you explain the difference between a Process and a Thread?";
-        await speakAndLog(io, sessionId, msg, state);
-        return;
-      }
+      const state = activeSessions.get(sessionId)!;
+      console.log(`🗣️ User (${sessionId}): ${text}`);
 
-      // Phase 3: Technical -> Coding (After 3 turns)
-      if (state.phase === 'technical' && state.turnCount >= 3) {
-        state.phase = 'coding';
-        state.turnCount = 0;
-        const msg = "Excellent. Let's test your problem-solving skills. I am opening the coding environment now.";
-        
-        // TRIGGER FRONTEND TO SWITCH MODES
-        io.to(sessionId).emit('start_coding_phase');
-        await speakAndLog(io, sessionId, msg, state);
-        return;
-      }
+      // Add User input to history
+      state.history.push({ role: 'user', content: text });
 
-      // --- GENERATE INTELLIGENT RESPONSE (If no phase change) ---
-      const reply = await generateAIResponse(data.text, state.phase, state.transcript);
-      await speakAndLog(io, sessionId, reply, state);
+      try {
+        // Generate AI Reply
+        const aiResponse = await geminiService.generateVerbalResponse(
+          state.history, 
+          text
+        );
+
+        // Add AI response to history
+        state.history.push({ role: 'assistant', content: aiResponse.text });
+
+        // Emit Audio
+        socket.emit('ai_speak', { text: aiResponse.text });
+
+        // Phase Switch Check
+        if (aiResponse.action === 'START_CODING') {
+          console.log(`🚀 Switching to CODING PHASE for ${sessionId}`);
+          state.phase = 'coding';
+          setTimeout(() => {
+            io.to(sessionId).emit('start_coding_phase');
+          }, 4000);
+        }
+
+      } catch (error) {
+        console.error("❌ AI Gen Error:", error);
+        socket.emit('ai_speak', { text: "Could you repeat that?" });
+      }
     });
 
     socket.on('disconnect', () => {
-      // We do NOT delete the session here to allow reconnection
-      console.log(`❌ Client disconnected: ${socket.id}`);
+      // Keep session in memory for a while
     });
   });
 };
-
-// Helper to send audio and save text
-async function speakAndLog(io: Server, sessionId: string, text: string, state: SessionState) {
-  state.transcript.push(`AI: ${text}`);
-  io.to(sessionId).emit('ai_speak', { text });
-}
-
-// AI Brain
-async function generateAIResponse(userText: string, phase: string, history: string[]): Promise<string> {
-  const systemPrompt = `
-    You are Alex, an expert technical interviewer.
-    Current Phase: ${phase.toUpperCase()}.
-    
-    RULES:
-    1. Ask ONE clear question at a time.
-    2. Keep responses short (max 2 sentences).
-    3. NO CODE BLOCKS. NO MARKDOWN. Speak in plain English only.
-    4. If the user is unclear, ask them to clarify.
-    5. Be professional but encouraging.
-  `;
-
-  try {
-    const completion = await groq.chat.completions.create({
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...history.slice(-6).map(h => ({ 
-            role: h.startsWith('AI:') ? 'assistant' : 'user', 
-            content: h.replace(/^(AI:|User:)\s*/, '') 
-        })) as any,
-        { role: 'user', content: userText }
-      ],
-      model: 'llama-3.3-70b-versatile',
-      max_tokens: 100
-    });
-    return completion.choices[0]?.message?.content || "Could you repeat that?";
-  } catch (e) {
-    return "I see. Let's move to the next topic.";
-  }
-}
