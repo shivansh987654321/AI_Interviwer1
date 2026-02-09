@@ -5,9 +5,9 @@ import geminiService from '../services/gemini.service';
 interface SessionState {
   history: { role: 'user' | 'assistant' | 'system'; content: string }[];
   phase: 'intro' | 'verbal' | 'coding';
+  codingResult?: any; // 🆕 Added to store coding score
 }
 
-// Global memory to store chat history
 const activeSessions = new Map<string, SessionState>();
 
 export const initializeInterviewSocket = (io: Server) => {
@@ -16,85 +16,79 @@ export const initializeInterviewSocket = (io: Server) => {
   interviewNamespace.on('connection', (socket: Socket) => {
     console.log(`🔌 Client connected: ${socket.id}`);
 
-    // --- 1. START/JOIN SESSION ---
+    // --- 1. START/JOIN ---
     socket.on('start_voice_interview', async ({ sessionId }) => {
       if (!sessionId) return;
-      
       socket.join(sessionId);
-
-      // Check if session exists in memory
-      let state = activeSessions.get(sessionId);
-
-      if (!state) {
-        // ✨ NEW SESSION
-        console.log(`✨ Creating NEW Session: ${sessionId}`);
-        state = { history: [], phase: 'intro' };
-        activeSessions.set(sessionId, state);
-
+      
+      if (!activeSessions.has(sessionId)) {
+        console.log(`✨ New Session: ${sessionId}`);
+        activeSessions.set(sessionId, { history: [], phase: 'intro' });
+        
         try {
-          // Generate the First Greeting
-          const aiResponse = await geminiService.generateVerbalResponse([], "START_INTERVIEW");
-          
-          state.history.push({ role: 'assistant', content: aiResponse.text });
-          socket.emit('ai_speak', { text: aiResponse.text });
-        } catch (error) {
-          socket.emit('ai_speak', { text: "Hello! I am Alex. Could you tell me about your background?" });
+            const aiResponse = await geminiService.generateVerbalResponse([], "START_INTERVIEW");
+            const state = activeSessions.get(sessionId)!;
+            state.history.push({ role: 'assistant', content: aiResponse.text });
+            socket.emit('ai_speak', { text: aiResponse.text });
+        } catch (e) { 
+            socket.emit('ai_speak', { text: "Hello. Let's begin." }); 
         }
       } else {
-        // 🔄 RESUMING SESSION
-        console.log(`🔄 Resumed Session: ${sessionId} (History Length: ${state.history.length})`);
-        // We do NOT emit 'ai_speak' here, so the AI stays silent and waits for the user
+        console.log(`🔄 Resumed: ${sessionId}`);
       }
     });
 
-    // --- 2. HANDLE USER SPEECH ---
-    socket.on('user_speak', async (data: { text: string, sessionId: string }) => {
+    // --- 2. VERBAL CONVERSATION ---
+    socket.on('user_speak', async (data) => {
       const { text, sessionId } = data;
-      
-      if (!sessionId || !activeSessions.has(sessionId)) {
-        // If server restarted, we might lose the session. 
-        // silently re-create it to prevent crash, but don't reset intro.
-        if (sessionId && !activeSessions.has(sessionId)) {
-             activeSessions.set(sessionId, { history: [], phase: 'intro' });
-        }
-      }
+      const state = activeSessions.get(sessionId);
+      if (!state) return;
 
-      const state = activeSessions.get(sessionId)!;
-      console.log(`🗣️ User (${sessionId}): ${text}`);
-
-      // Add User input to history
       state.history.push({ role: 'user', content: text });
 
       try {
-        // Generate AI Reply
-        const aiResponse = await geminiService.generateVerbalResponse(
-          state.history, 
-          text
-        );
-
-        // Add AI response to history
+        const aiResponse = await geminiService.generateVerbalResponse(state.history, text);
         state.history.push({ role: 'assistant', content: aiResponse.text });
-
-        // Emit Audio
         socket.emit('ai_speak', { text: aiResponse.text });
 
-        // Phase Switch Check
         if (aiResponse.action === 'START_CODING') {
-          console.log(`🚀 Switching to CODING PHASE for ${sessionId}`);
           state.phase = 'coding';
-          setTimeout(() => {
-            io.to(sessionId).emit('start_coding_phase');
-          }, 4000);
+          setTimeout(() => io.to(sessionId).emit('start_coding_phase'), 4000);
         }
+      } catch (e) { console.error(e); }
+    });
 
-      } catch (error) {
-        console.error("❌ AI Gen Error:", error);
-        socket.emit('ai_speak', { text: "Could you repeat that?" });
+    // --- 3. SAVE CODING RESULT (🆕 Call this from your Coding Page) ---
+    socket.on('submit_code_result', ({ sessionId, result }) => {
+        console.log(`💾 Coding Result Saved for ${sessionId}:`, result);
+        const state = activeSessions.get(sessionId);
+        if (state) {
+            state.codingResult = result; // Save the marks!
+        }
+    });
+
+    // --- 4. GENERATE FINAL REPORT CARD ---
+    socket.on('end_interview', async ({ sessionId }) => {
+      console.log(`🏁 Generating Final Report for: ${sessionId}`);
+      const state = activeSessions.get(sessionId);
+      
+      if (!state) {
+        socket.emit('error', { message: "Session missing." });
+        return;
       }
+
+      socket.emit('feedback_processing', { message: "Analyzing Verbal & Coding performance..." });
+
+      // Pass BOTH history AND codingResult to the grader
+      const report = await geminiService.generateFinalFeedback(
+          state.history, 
+          state.codingResult
+      );
+      
+      console.log(`📊 Final Score: ${report.score}/100`);
+      socket.emit('interview_results', report);
     });
 
-    socket.on('disconnect', () => {
-      // Keep session in memory for a while
-    });
+    socket.on('disconnect', () => {});
   });
 };

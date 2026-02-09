@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 
-// --- TYPE DEFINITIONS ---
+// --- TYPES ---
 interface IWindow extends Window {
   webkitSpeechRecognition: any;
   SpeechRecognition: any;
@@ -16,6 +16,19 @@ interface VoiceAssistantProps {
 
 type AIState = 'IDLE' | 'LISTENING' | 'THINKING' | 'SPEAKING' | 'ERROR';
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
+
+// Type for the Report Card Data
+interface ReportCard {
+  score: number;
+  breakdown: {
+    communication: number;
+    technical: number;
+    problem_solving: number;
+  };
+  feedback_summary: string;
+  key_strengths: string[];
+  areas_for_improvement: string[];
+}
 
 export default function VoiceAssistant({ 
   sessionId, 
@@ -32,15 +45,17 @@ export default function VoiceAssistant({
   const [voicesLoaded, setVoicesLoaded] = useState(false); 
   
   const [speechQueue, setSpeechQueue] = useState<string[]>([]);
+
+  // REPORT CARD STATE
+  const [isEnding, setIsEnding] = useState(false);
+  const [reportData, setReportData] = useState<ReportCard | null>(null);
   
   // --- REFS ---
   const aiStateRef = useRef<AIState>('IDLE'); 
   const isSpeakingRef = useRef(false); 
   const socketRef = useRef<Socket | null>(null);
   const recognitionRef = useRef<any>(null);
-  const isMounted = useRef(true); 
   
-  // Ref for the callback to prevent dependency loops
   const onCodingStartRef = useRef(onCodingStart);
   
   const queueLengthRef = useRef(0);
@@ -66,12 +81,10 @@ export default function VoiceAssistant({
     return () => { window.speechSynthesis.onvoiceschanged = null; };
   }, []);
 
-  // --- 1. SOCKET CONNECTION (STABILIZED) ---
+  // --- 1. SOCKET CONNECTION ---
   useEffect(() => {
     if (!sessionId) return;
     
-    // 🛑 CRITICAL FIX: If socket is already alive, DO NOT RECONNECT.
-    // This stops the "Hello, I am Rohan" loop.
     if (socketRef.current && socketRef.current.connected) {
         console.log("⚡ Socket already active, skipping reconnect.");
         return; 
@@ -81,10 +94,7 @@ export default function VoiceAssistant({
     console.log("🔌 Connecting Socket:", apiUrl);
     setConnectionStatus('connecting');
 
-    // Only disconnect if we have a BROKEN socket
-    if (socketRef.current) {
-        socketRef.current.disconnect();
-    }
+    if (socketRef.current) socketRef.current.disconnect();
 
     const newSocket = io(apiUrl, { 
         withCredentials: true, 
@@ -106,7 +116,6 @@ export default function VoiceAssistant({
     });
 
     newSocket.on('ai_speak', (data: { text: string }) => {
-        console.log("📩 Received AI Text:", data.text);
         setTranscript(""); 
         setSpeechQueue(prev => {
             const newQ = [...prev, data.text];
@@ -122,16 +131,30 @@ export default function VoiceAssistant({
         }, 4000);
     });
 
-    // 🛑 STOP THE BLINKING: We commented out the disconnect here.
-    // This prevents React "Strict Mode" from killing the connection every time you save.
+    // 🆕 LISTEN FOR REPORT CARD
+    newSocket.on('feedback_processing', (data: { message: string }) => {
+        setDebugMsg(data.message);
+        setIsEnding(true); // Show loading spinner
+    });
+
+    newSocket.on('interview_results', (data: ReportCard) => {
+        console.log("📊 Report Received:", data);
+        setIsEnding(false);
+        setReportData(data); // Show the Modal
+        // Stop audio
+        window.speechSynthesis.cancel();
+    });
+
     return () => {
-        // console.log("🧹 Keeping socket alive during re-renders");
-        // if (newSocket) newSocket.disconnect(); // <--- DISABLED FOR STABILITY
+        // cleanup logic
     };
   }, [sessionId, apiEndpoint]); 
 
   // --- 2. SPEECH RECOGNITION ---
   const startListening = useCallback(() => {
+    // If ending or showing report, disable mic
+    if (isEnding || reportData) return;
+
     if (isSpeakingRef.current || aiStateRef.current === 'THINKING' || queueLengthRef.current > 0) return;
 
     const { webkitSpeechRecognition, SpeechRecognition } = window as unknown as IWindow;
@@ -139,7 +162,6 @@ export default function VoiceAssistant({
 
     if (!SpeechAPI) return;
 
-    // Don't kill existing recognition if it's running
     if (recognitionRef.current && aiStateRef.current === 'LISTENING') return;
 
     if (recognitionRef.current) {
@@ -164,11 +186,10 @@ export default function VoiceAssistant({
         setTranscript(currentText);
         fullTranscriptRef.current = currentText;
 
-        // Smart Silence Timer (2 seconds)
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = setTimeout(() => {
             handleUserFinishedSpeaking();
-        }, 5000); 
+        }, 4000); // 4 Seconds wait time
     };
 
     recognition.onerror = (event: any) => {
@@ -181,7 +202,7 @@ export default function VoiceAssistant({
 
     recognitionRef.current = recognition;
     try { recognition.start(); } catch (e) { }
-  }, []); 
+  }, [isEnding, reportData]); 
 
   const stopListening = useCallback(() => {
     if (recognitionRef.current) {
@@ -226,7 +247,6 @@ export default function VoiceAssistant({
     (window as unknown as IWindow).voiceAssistantGlobalUtterance = utterance;
 
     const voices = window.speechSynthesis.getVoices();
-    // Try to find a good voice
     let preferredVoice = voices.find(v => v.name.includes("Google US English") || v.name.includes("Samantha"));
     if (preferredVoice) utterance.voice = preferredVoice;
 
@@ -240,7 +260,6 @@ export default function VoiceAssistant({
             const nextQueue = prev.slice(1);
             queueLengthRef.current = nextQueue.length;
             
-            // IF QUEUE IS EMPTY -> START MIC
             if (nextQueue.length === 0) {
                  setAiState('IDLE');
                  setTranscript(""); 
@@ -263,7 +282,7 @@ export default function VoiceAssistant({
     }
   }, [speechQueue, speakText]);
 
-  // --- 4. START BUTTON ---
+  // --- 4. BUTTONS & ACTIONS ---
   const handleStartInteraction = () => {
     const u = new SpeechSynthesisUtterance("Okay.");
     u.volume = 0.1;
@@ -286,6 +305,21 @@ export default function VoiceAssistant({
       setTimeout(() => startListening(), 500);
   };
 
+  // 🆕 END INTERVIEW FUNCTION
+  const handleEndInterview = () => {
+      if (confirm("Are you sure you want to finish the interview and get your marks?")) {
+          stopListening();
+          window.speechSynthesis.cancel();
+          setSpeechQueue([]);
+          setIsEnding(true);
+          setAiState('THINKING');
+          
+          if (socketRef.current?.connected) {
+              socketRef.current.emit('end_interview', { sessionId });
+          }
+      }
+  };
+
   const getStatusColor = () => {
       switch (aiState) {
           case 'SPEAKING': return '#3b82f6';
@@ -297,6 +331,7 @@ export default function VoiceAssistant({
 
   return (
     <>
+      {/* 1. START OVERLAY */}
       {!hasStarted && (
         <div className="voice-overlay">
           <div className="glass-card">
@@ -313,27 +348,100 @@ export default function VoiceAssistant({
         </div>
       )}
 
+      {/* 2. REPORT CARD OVERLAY */}
+      {reportData && (
+        <div className="voice-overlay">
+          <div className="report-card">
+             <h2 className="report-title">Interview Results</h2>
+             
+             <div className="score-circle">
+                <span className="score-num">{reportData.score}</span>
+                <span className="score-total">/100</span>
+             </div>
+
+             <div className="metrics-grid">
+                <div className="metric">
+                    <span>Communication</span>
+                    <div className="bar-bg"><div className="bar-fill" style={{width: `${(reportData.breakdown.communication/30)*100}%`}}></div></div>
+                    <span className="metric-val">{reportData.breakdown.communication}/30</span>
+                </div>
+                <div className="metric">
+                    <span>Technical</span>
+                    <div className="bar-bg"><div className="bar-fill" style={{width: `${(reportData.breakdown.technical/40)*100}%`}}></div></div>
+                    <span className="metric-val">{reportData.breakdown.technical}/40</span>
+                </div>
+                <div className="metric">
+                    <span>Problem Solving</span>
+                    <div className="bar-bg"><div className="bar-fill" style={{width: `${(reportData.breakdown.problem_solving/30)*100}%`}}></div></div>
+                    <span className="metric-val">{reportData.breakdown.problem_solving}/30</span>
+                </div>
+             </div>
+
+             <div className="feedback-section">
+                <h3>Summary</h3>
+                <p>{reportData.feedback_summary}</p>
+             </div>
+             
+             <button onClick={() => window.location.reload()} className="restart-btn">Start New Interview</button>
+          </div>
+        </div>
+      )}
+
+      {/* 3. MAIN HUD */}
       <div className="hud-container">
+        
+        {/* Loading Spinner for Report */}
+        {isEnding && !reportData && (
+            <div className="processing-badge">Genererating Report...</div>
+        )}
+
         <div className="status-label" style={{ color: getStatusColor() }}>{aiState}</div>
+        
         <div className={`orb ${aiState}`}>
           <div className="orb-core"></div>
           <div className="orb-glow"></div>
         </div>
+        
         {transcript && <div className="captions-box">You: &quot;{transcript}&quot;</div>}
+        
         <div className="controls">
             <button onClick={handleManualReset} className="reset-btn">↻ Reset</button>
+            <button onClick={handleEndInterview} className="end-btn">🏁 Finish Interview</button>
         </div>
       </div>
+
       <style jsx>{`
         .voice-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); display: flex; justify-content: center; align-items: center; z-index: 9999; }
         .glass-card { background: rgba(30, 30, 30, 0.95); padding: 40px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); text-align: center; color: white; box-shadow: 0 20px 50px rgba(0,0,0,0.5); width: 90%; max-width: 400px; }
+        
+        /* REPORT CARD STYLES */
+        .report-card { background: #1e1e1e; padding: 30px; border-radius: 24px; color: white; width: 90%; max-width: 500px; border: 1px solid #333; box-shadow: 0 0 40px rgba(0,0,0,0.8); max-height: 90vh; overflow-y: auto; }
+        .report-title { text-align: center; margin-bottom: 20px; font-size: 1.5rem; }
+        .score-circle { width: 120px; height: 120px; background: #2563eb; border-radius: 50%; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 0 auto 25px; box-shadow: 0 0 20px rgba(37, 99, 235, 0.5); }
+        .score-num { font-size: 2.5rem; font-weight: 800; line-height: 1; }
+        .score-total { font-size: 0.8rem; opacity: 0.8; }
+        
+        .metrics-grid { display: flex; flex-direction: column; gap: 15px; margin-bottom: 25px; }
+        .metric { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; }
+        .metric span:first-child { width: 100px; }
+        .bar-bg { flex: 1; height: 8px; background: #333; border-radius: 4px; overflow: hidden; }
+        .bar-fill { height: 100%; background: #4ade80; border-radius: 4px; }
+        .feedback-section { background: #2a2a2a; padding: 15px; border-radius: 12px; margin-bottom: 20px; }
+        .restart-btn { width: 100%; padding: 12px; background: white; color: black; border: none; font-weight: bold; border-radius: 8px; cursor: pointer; }
+
         .hud-container { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 20px; z-index: 1000; pointer-events: none; }
         .hud-container button { pointer-events: auto; }
         .status-label { font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; background: rgba(0,0,0,0.6); padding: 4px 12px; border-radius: 12px; color: white; }
         .captions-box { background: rgba(0, 0, 0, 0.7); color: rgba(255, 255, 255, 0.95); padding: 10px 20px; border-radius: 12px; font-size: 0.95rem; max-width: 80vw; text-align: center; border: 1px solid rgba(255,255,255,0.1); }
+        
         .start-btn { width: 100%; padding: 14px; font-size: 1rem; font-weight: 600; background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; border: none; border-radius: 12px; cursor: pointer; margin-top: 15px; }
         .start-btn:disabled { background: #475569; cursor: not-allowed; }
-        .reset-btn { padding: 6px 12px; font-size: 0.75rem; border-radius: 6px; border: none; cursor: pointer; background: #ef4444; color: white; opacity: 0.8; }
+        
+        .controls { display: flex; gap: 10px; }
+        .reset-btn { padding: 8px 16px; font-size: 0.8rem; border-radius: 8px; border: none; cursor: pointer; background: #ef4444; color: white; opacity: 0.8; }
+        .end-btn { padding: 8px 16px; font-size: 0.8rem; border-radius: 8px; border: none; cursor: pointer; background: #10b981; color: white; font-weight: 600; }
+        .processing-badge { background: #f59e0b; color: black; padding: 5px 15px; border-radius: 20px; font-weight: bold; font-size: 0.8rem; animation: pulse 1s infinite; }
+
         .orb { width: 80px; height: 80px; position: relative; display: flex; justify-content: center; align-items: center; }
         .orb-core { width: 40px; height: 40px; background: #fff; border-radius: 50%; z-index: 10; transition: background 0.3s; }
         .orb-glow { position: absolute; width: 100%; height: 100%; border-radius: 50%; z-index: 1; filter: blur(20px); opacity: 0.5; transition: all 0.3s; }

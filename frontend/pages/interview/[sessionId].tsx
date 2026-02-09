@@ -3,6 +3,8 @@ import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import Editor, { OnChange } from '@monaco-editor/react';
 import VoiceAssistant from '../../components/VoiceAssistant';
+// 1. IMPORT SOCKET
+import { io, Socket } from 'socket.io-client'; 
 
 // --- 1. LANGUAGE TEMPLATES ---
 const TEMPLATES: Record<string, string> = {
@@ -30,6 +32,7 @@ export default function InterviewPage() {
 
   // --- 3. REFS ---
   const editorRef = useRef<any>(null); 
+  const socketRef = useRef<Socket | null>(null); // 2. SOCKET REF
 
   // --- 4. WAIT FOR ROUTER HYDRATION ---
   useEffect(() => {
@@ -39,9 +42,11 @@ export default function InterviewPage() {
     }
   }, [router.isReady]);
 
-  // --- 5. INITIALIZATION ---
+  // --- 5. INITIALIZATION & SOCKET CONNECTION ---
   useEffect(() => {
     if (!sessionId || !routerReady) return;
+    
+    // A. Load Question Data
     console.log('[Interview] Loading session:', sessionId);
     axios.get(`${apiUrl}/api/interview/${sessionId}`)
       .then(res => {
@@ -54,6 +59,13 @@ export default function InterviewPage() {
         console.error("Failed to load session", err);
         setLoading(false);
       });
+
+    // B. Connect Socket (To send coding scores)
+    const socket = io(apiUrl);
+    socketRef.current = socket;
+
+    return () => { socket.disconnect(); };
+
   }, [sessionId, routerReady]);
 
   // --- 5. TIMER SYNC ---
@@ -76,29 +88,41 @@ export default function InterviewPage() {
 
   const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newLang = e.target.value;
-    // FIX: Using proper backticks for the confirm message
     if (window.confirm(`Switch to ${newLang.toUpperCase()}? This will reset your current code.`)) {
       setLanguage(newLang);
       setCode(TEMPLATES[newLang]);
     }
   };
 
+  // --- 3. UPDATED SUBMIT LOGIC ---
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
+      // 1. Submit code to backend for evaluation
       const res = await axios.post(`${apiUrl}/api/interview/submit`, {
         sessionId,
         code,
         language
       });
 
+      // 2. SEND SCORE TO VOICE ASSISTANT (Crucial Step!)
+      // This ensures the final Report Card includes your coding performance.
+      if (socketRef.current) {
+          console.log("Sending Coding Score to System...", res.data);
+          socketRef.current.emit('submit_code_result', {
+              sessionId,
+              result: res.data // Contains score, verdict, etc.
+          });
+      }
+
       if (res.data.nextQuestion) {
         alert("Success! Moving to next question.");
         setQuestion(res.data.nextQuestion);
         setCode(TEMPLATES[language]); 
       } else {
-        alert("Interview Completed!");
-        router.push('/');
+        // 3. DO NOT REDIRECT. Prompt for Report Card.
+        // We removed router.push('/') so you can see the report.
+        alert("Coding Round Complete! \n\nPlease click the green 'Finish Interview' button on the AI Assistant to generate your Report Card.");
       }
     } catch (err) {
       alert("Submission Error. Check console for details.");
@@ -108,7 +132,6 @@ export default function InterviewPage() {
     }
   };
 
-  // FIX: Using proper backticks for string interpolation
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
     const sec = s % 60;
@@ -123,7 +146,7 @@ export default function InterviewPage() {
 
   return (
     <div className="interview-layout">
-      {/* Voice Assistant (Hidden Logic) */}
+      {/* Voice Assistant (Handling the Report Card UI) */}
       <VoiceAssistant sessionId={sessionId} onCodingStart={() => setIsCodingStarted(true)} />
 
       {/* HEADER / NAVIGATION */}
@@ -199,8 +222,6 @@ export default function InterviewPage() {
 
       <style jsx>{`
         .interview-layout { display: flex; flex-direction: column; height: 100vh; background: #1e1e1e; color: #fff; font-family: sans-serif; }
-        
-        /* Nav Bar */
         .nav { height: 60px; background: #252526; display: flex; justify-content: space-between; align-items: center; padding: 0 20px; border-bottom: 1px solid #333; }
         .problem-info h1 { font-size: 1.1rem; margin: 0; color: #ccc; }
         .timer { font-family: monospace; font-size: 1.2rem; color: #4ade80; font-weight: bold; margin-left: 15px; }
@@ -209,28 +230,19 @@ export default function InterviewPage() {
         .submit-btn { background: #0e639c; color: white; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; }
         .submit-btn:hover { background: #1177bb; }
         .submit-btn:disabled { background: #555; cursor: not-allowed; }
-
-        /* Workspace */
         .workspace { flex: 1; overflow: hidden; position: relative; }
-        
-        /* Pre-Coding (Voice Phase) */
         .pre-coding { height: 100%; display: flex; justify-content: center; align-items: center; background: #1e1e1e; }
         .ai-status { text-align: center; background: #252526; padding: 40px; border-radius: 12px; border: 1px solid #333; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
         .pulse-icon { font-size: 3rem; display: block; margin-bottom: 20px; animation: pulse 2s infinite; }
         .subtext { color: #888; font-size: 0.9rem; margin-top: 10px; }
-
-        /* Coding Area */
         .coding-area { display: flex; height: 100%; }
         .problem-panel { width: 40%; background: #f3f4f6; color: #333; padding: 20px; overflow-y: auto; border-right: 1px solid #ccc; }
         .problem-panel h3 { margin-top: 0; color: #111; border-bottom: 1px solid #ddd; padding-bottom: 10px; }
         .desc-text { line-height: 1.6; }
         .example-box { background: #e5e7eb; padding: 15px; border-radius: 6px; margin-top: 20px; }
         .example-box pre { white-space: pre-wrap; font-family: 'Courier New', monospace; font-size: 0.9rem; }
-        
         .editor-panel { flex: 1; overflow: hidden; }
-
         .loading { display: flex; justify-content: center; align-items: center; height: 100vh; background: #1e1e1e; color: #888; }
-        
         @keyframes pulse {
           0% { transform: scale(1); opacity: 1; }
           50% { transform: scale(1.1); opacity: 0.7; }

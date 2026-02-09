@@ -7415,5 +7415,302 @@
     "status": "active",
     "duration": 900,
     "createdAt": "2026-02-09T19:35:22.657Z"
+  },
+  "63209160-3d7c-43a8-aabb-4e8c9c9749ec": {
+    "id": "63209160-3d7c-43a8-aabb-4e8c9c9749ec",
+    "startTime": "2026-02-09T20:07:25.124Z",
+    "questions": [
+      {
+        "title": "Find the Duplicate Number",
+        "description": "Given an array of integers `nums` where there is one duplicate number, return the duplicate number. The array has a length of `n` and the range of values in the array is from 1 to `n`. You do not need to sort the array or create a new array.",
+        "inputFormat": "Input an array of integers `nums` of length `n` where `1 <= n <= 1000` and `1 <= nums[i] <= n`.",
+        "outputFormat": "Return the duplicate number.",
+        "constraints": "The array contains only integers between `1` and `n` inclusive and has a length of `n`.",
+        "example": {
+          "input": "[1, 3, 4, 2, 2]",
+          "output": "2",
+          "explanation": "The array contains the numbers 1, 3, 4, and 2 twice. The duplicate number is 2."
+        },
+        "starterCode": "function findDuplicate(nums) {\n  // write code here\n}"
+      },
+      {
+        "title": "Find the Index of a Number in a Sorted Array",
+        "description": "Given a sorted array and a target number, find the index of the target number in the array. If the target number is not found, return -1.",
+        "inputFormat": "The input will be an array of integers and a target number.",
+        "outputFormat": "The index of the target number or -1 if not found.",
+        "constraints": "The input array will contain at least one element and will be sorted in ascending order.",
+        "example": {
+          "input": "[1, 2, 3, 4, 5], 3",
+          "output": "2",
+          "explanation": "The target number 3 is at index 2 in the array."
+        },
+        "starterCode": "function solution(nums, target) {\n  // write code here\n}"
+      },
+      {
+        "title": "Reverse String",
+        "description": "Write a function that takes an input string and returns the reversed string. This is a basic example of a string manipulation problem.",
+        "inputFormat": "A single string as input.",
+        "outputFormat": "The reversed string.",
+        "constraints": "Do not use built-in reverse functions or methods.",
+        "example": {
+          "input": "Hello, World!",
+          "output": "!dlroW ,olleH",
+          "explanation": "For example, the input 'Hello, World!' should return the reversed string '!dlroW ,olleH'."
+        },
+        "starterCode": "function solution(str) {\n  let result = '';\n  // write code here\n  return result;\n}"
+      }
+    ],
+    "currentQuestionIndex": 1,
+    "question": {
+      "title": "Find the Index of a Number in a Sorted Array",
+      "description": "Given a sorted array and a target number, find the index of the target number in the array. If the target number is not found, return -1.",
+      "inputFormat": "The input will be an array of integers and a target number.",
+      "outputFormat": "The index of the target number or -1 if not found.",
+      "constraints": "The input array will contain at least one element and will be sorted in ascending order.",
+      "example": {
+        "input": "[1, 2, 3, 4, 5], 3",
+        "output": "2",
+        "explanation": "The target number 3 is at index 2 in the array."
+      },
+      "starterCode": "function solution(nums, target) {\n  // write code here\n}"
+    },
+    "scores": [
+      {
+        "score": 90,
+        "verdict": "Accepted",
+        "code": "class Solution {\n    public int solution(int[] nums) {\n        int slow = nums[0];\n        int fast = nums[0];\n\n        // Phase 1: Detect cycle\n        do {\n            slow = nums[slow];\n            fast = nums[nums[fast]];\n        } while (slow != fast);\n\n        // Phase 2: Find entrance of cycle (duplicate)\n        slow = nums[0];\n        while (slow != fast) {\n            slow = nums[slow];\n            fast = nums[fast];\n        }\n\n        return slow;\n    }\n}\n",
+        "questionTitle": "Find the Duplicate Number"
+      },
+      {
+        "score": 0,
+        "verdict": "Compilation Error",
+        "code": "class Solution {\n    public int solution(int[] nums, int target) {\n        int left = 0;\n        int right = nums.length - 1;\n\n        while (left <= right) {\n            int mid = left + (right - left) / 2;\n\n            if (nums[mid] == target) {\n                return mid;\n            } else if (nums[mid] < target) {\n                left = mid + 1;\n            } else {\n                right = mid - 1;\n            }\n        }\n\n        return -1;\n    }\n}\n",
+        "questionTitle": "Find the Index of a Number in a Sorted Array"
+      }
+    ],
+    "status": "active",
+    "duration": 900,
+    "createdAt": "2026-02-09T20:07:25.124Z"
+  },
+  "a2736b21-70da-4259-9d67-1aed97187859": {
+    "id": "a2736b21-70da-4259-9d67-1aed97187859",
+    "startTime": "2026-02-09T20:35:32.629Z",
+    "questions": [
+      {
+        "title": "Reverse String",
+        "description": "Write a function to reverse a given string.",
+        "inputFormat": "string s",
+        "outputFormat": "string (the reversed input string)",
+        "constraints": "The input string can contain uppercase and lowercase letters, numbers, spaces, and special characters.",
+        "example": {
+          "input": "Hello World",
+          "output": "dlroW olleH",
+          "explanation": "Example input string and its reversed output."
+        },
+        "starterCode": "function solution(s) {\n  // write code here\n}"
+      },
+      {
+        "title": "Find the First Duplicate in an Array",
+        "description": "Given an array of integers, write a function to find the first duplicate in the array.",
+        "inputFormat": "Array of integers",
+        "outputFormat": "First duplicate integer or -1 if no duplicates found",
+        "constraints": "The array may contain duplicate duplicates, and the array will not be empty.",
+        "example": {
+          "input": "[2, 1, 3, 5, 3, 2]",
+          "output": "2",
+          "explanation": "The first duplicate in the array is 2."
+        },
+        "starterCode": "function findFirstDuplicate(arr) {\n  // write code here\n}"
+      },
+      {
+        "title": "Find First Duplicate",
+        "description": "Given an array of integers, find the first duplicate element in the array.",
+        "inputFormat": "Input an array of integers.",
+        "outputFormat": "Return the first duplicate element, or -1 if no duplicates found.",
+        "constraints": "Array may be empty or contain multiple duplicates.",
+        "example": {
+          "input": "[2, 1, 3, 5, 3, 2]",
+          "output": "3",
+          "explanation": "The first duplicate in the array is 3."
+        },
+        "starterCode": "function solution(arr) {\n  let seen = new Set();\n  for (let num of arr) {\n    // write code here\n  }\n}"
+      }
+    ],
+    "currentQuestionIndex": 0,
+    "question": {
+      "title": "Reverse String",
+      "description": "Write a function to reverse a given string.",
+      "inputFormat": "string s",
+      "outputFormat": "string (the reversed input string)",
+      "constraints": "The input string can contain uppercase and lowercase letters, numbers, spaces, and special characters.",
+      "example": {
+        "input": "Hello World",
+        "output": "dlroW olleH",
+        "explanation": "Example input string and its reversed output."
+      },
+      "starterCode": "function solution(s) {\n  // write code here\n}"
+    },
+    "scores": [
+      {
+        "score": 0,
+        "verdict": "Compilation Error",
+        "code": "class Solution {\n    public int solution(int[] nums) {\n        // Write your logic here\n        return 0;\n    }\n}",
+        "questionTitle": "Reverse String"
+      }
+    ],
+    "status": "active",
+    "duration": 900,
+    "createdAt": "2026-02-09T20:35:32.629Z"
+  },
+  "721bad76-3290-4a15-88ab-6683ad88edf6": {
+    "id": "721bad76-3290-4a15-88ab-6683ad88edf6",
+    "startTime": "2026-02-09T20:37:30.047Z",
+    "questions": [
+      {
+        "title": "Minimum Swaps to Sort Array",
+        "description": "Given an array of integers where each element is at most n (0-indexed) and every element is unique, determine the minimum number of swaps needed to sort the array in non-decreasing order. If it's not possible, return -1.",
+        "inputFormat": "Input an array of integers.",
+        "outputFormat": "The minimum number of swaps needed to sort the array, or -1 if it's not possible.",
+        "constraints": "The array length will be in the range [1, 10^5]. The array elements will be in the range [0, n] and each element will be unique.",
+        "example": {
+          "input": "[4, 3, 2, 1]",
+          "output": "2",
+          "explanation": "We can swap the first two elements to get [3, 4, 2, 1], then swap the second and third elements to get [3, 2, 4, 1], and finally swap the third and fourth elements to get [3, 2, 1, 4]."
+        },
+        "starterCode": "function minSwaps(arr) {\n  // write code here\n}"
+      },
+      {
+        "title": "Reverse Integer",
+        "description": "Given an integer, reverse the digits of that integer.",
+        "inputFormat": "Input will be a 32-bit signed integer.",
+        "outputFormat": "The reversed integer.",
+        "constraints": "The reversed integer should not overflow.",
+        "example": {
+          "input": "-123",
+          "output": "-321",
+          "explanation": "Reverse the digits of -123 to get -321."
+        },
+        "starterCode": "function reverseInteger(num) {\n  // write code here\n}"
+      },
+      {
+        "title": "Reverse Linked List",
+        "description": "Reverse a singly linked list.",
+        "inputFormat": "Input a singly linked list node.",
+        "outputFormat": "The reversed linked list node.",
+        "constraints": "Do not use a temporary array or data structure.",
+        "example": {
+          "input": "1 -> 2 -> 3",
+          "output": "3 -> 2 -> 1",
+          "explanation": "Reverse the linked list 1 -> 2 -> 3 to get 3 -> 2 -> 1"
+        },
+        "starterCode": "function solution(head) {\n  let prev = null;\n  let current = head;\n  while (current) {\n    // write code here\n  }\n}"
+      }
+    ],
+    "currentQuestionIndex": 0,
+    "question": {
+      "title": "Minimum Swaps to Sort Array",
+      "description": "Given an array of integers where each element is at most n (0-indexed) and every element is unique, determine the minimum number of swaps needed to sort the array in non-decreasing order. If it's not possible, return -1.",
+      "inputFormat": "Input an array of integers.",
+      "outputFormat": "The minimum number of swaps needed to sort the array, or -1 if it's not possible.",
+      "constraints": "The array length will be in the range [1, 10^5]. The array elements will be in the range [0, n] and each element will be unique.",
+      "example": {
+        "input": "[4, 3, 2, 1]",
+        "output": "2",
+        "explanation": "We can swap the first two elements to get [3, 4, 2, 1], then swap the second and third elements to get [3, 2, 4, 1], and finally swap the third and fourth elements to get [3, 2, 1, 4]."
+      },
+      "starterCode": "function minSwaps(arr) {\n  // write code here\n}"
+    },
+    "scores": [],
+    "status": "active",
+    "duration": 900,
+    "createdAt": "2026-02-09T20:37:30.047Z"
+  },
+  "39a0104c-221d-45e5-8a17-6bb8594848a0": {
+    "id": "39a0104c-221d-45e5-8a17-6bb8594848a0",
+    "startTime": "2026-02-09T20:39:05.456Z",
+    "questions": [
+      {
+        "title": "Reverse String",
+        "description": "Write a function to reverse a given string. The function should take a string as input and return the reversed string.",
+        "inputFormat": "A string as input",
+        "outputFormat": "The reversed string",
+        "constraints": "You can only use a single line of code to reverse the string.",
+        "example": {
+          "input": "\"Hello World!\"",
+          "output": "\"dlroW olleH!\"",
+          "explanation": "This example shows how to reverse a string with punctuation."
+        },
+        "starterCode": "function solution(s) {\n  // write code here\n}"
+      },
+      {
+        "title": "Find the Maximum Subarray Sum",
+        "description": "Given an array of integers, find the maximum possible sum of a subarray. A subarray is a contiguous subset of the array.",
+        "inputFormat": "Array of integers",
+        "outputFormat": "Maximum subarray sum",
+        "constraints": "Array may contain both positive and negative numbers, and the maximum integer may be large.",
+        "example": {
+          "input": "[5, -3, 2, 1, -4, 5]",
+          "output": "10",
+          "explanation": "The maximum subarray is [5, 2, 1, 5] with a sum of 10."
+        },
+        "starterCode": "function solution(arr) {\n  let maxCurrent = arr[0];\n  let maxGlobal = arr[0];\n  for (let i = 1; i < arr.length; i++) {\n    // write code here\n  }\n}"
+      },
+      {
+        "title": "Single Number",
+        "description": "Given a non-empty array of integers, every element appears twice except for one. Find that single number.",
+        "inputFormat": "Input: int[] nums",
+        "outputFormat": "Output: int",
+        "constraints": "1 <= nums.length <= 2 * 10^5 / 32",
+        "example": {
+          "input": "[4,1,2,1,2]",
+          "output": "4",
+          "explanation": "The single number is 4. The first two occurrences are of the number 1 and the third two occurrences are of the number 2."
+        },
+        "starterCode": "function singleNumber(nums) {\n  // write code here\n}"
+      }
+    ],
+    "currentQuestionIndex": 2,
+    "question": {
+      "title": "Single Number",
+      "description": "Given a non-empty array of integers, every element appears twice except for one. Find that single number.",
+      "inputFormat": "Input: int[] nums",
+      "outputFormat": "Output: int",
+      "constraints": "1 <= nums.length <= 2 * 10^5 / 32",
+      "example": {
+        "input": "[4,1,2,1,2]",
+        "output": "4",
+        "explanation": "The single number is 4. The first two occurrences are of the number 1 and the third two occurrences are of the number 2."
+      },
+      "starterCode": "function singleNumber(nums) {\n  // write code here\n}"
+    },
+    "scores": [
+      {
+        "score": 0,
+        "verdict": "Compilation Error",
+        "code": "class Solution {\n    public String solution(String s) {\n        return new StringBuilder(s).reverse().toString();\n    }\n}\n",
+        "questionTitle": "Reverse String"
+      },
+      {
+        "score": 80,
+        "verdict": "Accepted",
+        "code": "class Solution {\n    public String solution(String s) {\n        return new StringBuilder(s).reverse().toString();\n    }\n}\n",
+        "questionTitle": "Reverse String"
+      },
+      {
+        "score": 80,
+        "verdict": "Accepted",
+        "code": "class Solution {\n    public int solution(int[] nums) {\n        int maxSoFar = nums[0];\n        int currentSum = nums[0];\n\n        for (int i = 1; i < nums.length; i++) {\n            currentSum = Math.max(nums[i], currentSum + nums[i]);\n            maxSoFar = Math.max(maxSoFar, currentSum);\n        }\n\n        return maxSoFar;\n    }\n}\n",
+        "questionTitle": "Find the Maximum Subarray Sum"
+      },
+      {
+        "score": 95,
+        "verdict": "Accepted",
+        "code": "class Solution {\n    public int solution(int[] nums) {\n        int result = 0;\n\n        for (int num : nums) {\n            result ^= num;\n        }\n\n        return result;\n    }\n}\n",
+        "questionTitle": "Single Number"
+      }
+    ],
+    "status": "active",
+    "duration": 900,
+    "createdAt": "2026-02-09T20:39:05.456Z"
   }
 }

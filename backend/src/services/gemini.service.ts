@@ -12,13 +12,25 @@ class GeminiService {
     this.groq = new Groq({ apiKey: apiKey || 'dummy_key' });
   }
 
+  // 🧹 IMPROVED JSON CLEANER (The Fix for "System Error")
   private cleanJson(text: string): string {
-    const match = text.match(/```json([\s\S]*?)```/);
-    if (match && match[1]) return match[1].trim();
-    const firstBrace = text.indexOf('{');
-    const lastBrace = text.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace !== -1) return text.substring(firstBrace, lastBrace + 1);
-    return text.trim();
+    try {
+      // 1. Remove Markdown code blocks (```json ... ```)
+      let clean = text.replace(/```json/g, "").replace(/```/g, "").trim();
+      
+      // 2. Find the first '{' and last '}' to strip extra text
+      const firstBrace = clean.indexOf('{');
+      const lastBrace = clean.lastIndexOf('}');
+      
+      if (firstBrace !== -1 && lastBrace !== -1) {
+        clean = clean.substring(firstBrace, lastBrace + 1);
+      }
+      
+      return clean;
+    } catch (e) {
+      console.error("JSON Clean Error:", e);
+      return text; // Return original if regex fails
+    }
   }
 
   // =================================================================
@@ -58,7 +70,6 @@ class GeminiService {
       return JSON.parse(this.cleanJson(completion.choices[0]?.message?.content || '{}'));
     } catch (err) {
       console.error('Groq Gen Error:', err);
-      // Fallback
       return {
         title: "Two Sum (Fallback)",
         description: "Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.",
@@ -76,25 +87,18 @@ class GeminiService {
   // =================================================================
   async evaluateCode(question: DSAQuestion, code: string, language: string): Promise<EvaluationResult> {
     const prompt = `
-      ROLE: Realistic AI Interviewer.
-      PHASE: 4 (Code Review).
-      TASK: Review the candidate's code for: "${question.title}".
+      ROLE: Technical Interviewer.
+      TASK: Review code for "${question.title}".
       
-      Candidate Code (${language}):
+      CODE (${language}):
       ${code}
 
-      Rules:
-      1. Act like a HUMAN interviewer.
-      2. If syntax is wrong -> Verdict: "Compilation Error".
-      3. If logic is wrong -> Verdict: "Wrong Answer".
-      4. If correct -> Verdict: "Accepted".
-      
-      Output JSON:
+      OUTPUT JSON ONLY:
       {
-        "score": 0-100,
-        "verdict": "Accepted | Wrong Answer | Compilation Error",
-        "feedback": "Your verbal feedback to the candidate (1-2 sentences).",
-        "improvements": ["Optimization tip 1", "Code quality tip 2"]
+        "score": number (0-100),
+        "verdict": "Accepted" | "Wrong Answer" | "Compilation Error",
+        "feedback": "string",
+        "improvements": ["string"]
       }
     `;
 
@@ -104,14 +108,25 @@ class GeminiService {
         model: 'llama-3.1-8b-instant',
         temperature: 0.2,
       });
-      return JSON.parse(this.cleanJson(completion.choices[0]?.message?.content || '{}'));
+
+      const rawText = completion.choices[0]?.message?.content || '{}';
+      const cleanText = this.cleanJson(rawText);
+      
+      return JSON.parse(cleanText);
+
     } catch (err) {
-      return { score: 0, verdict: "Compilation Error", feedback: "System error. Please retry.", improvements: [] };
+      console.error("❌ EVALUATION ERROR:", err); 
+      return { 
+        score: 0, 
+        verdict: "Compilation Error", 
+        feedback: "System could not evaluate code. Please try again.", 
+        improvements: [] 
+      };
     }
   }
 
   // =================================================================
-  // PHASE 5: INTERVIEW CLOSURE (Replaces "Detailed Report")
+  // PHASE 5: INTERVIEW CLOSURE (Verbal Closing)
   // =================================================================
   async generateInterviewFeedback(scores: any[]): Promise<any> {
     const prompt = `
@@ -151,17 +166,11 @@ class GeminiService {
       };
     }
   }
-  // ... existing code ...
 
   // =================================================================
-  // PHASE 1-3: VERBAL CONVERSATION (The Missing Logic)
-  // =================================================================
-  // =================================================================
-  // PHASE 1-3: VERBAL CONVERSATION (Fixed Logic)
+  // PHASE 1-3: VERBAL CONVERSATION
   // =================================================================
   async generateVerbalResponse(history: any[], userTranscript: string): Promise<{ text: string; action?: string }> {
-    const isStart = history.length === 0 || userTranscript === "START_INTERVIEW";
-    
     const prompt = `
       ROLE: Friendly but professional FAANG Interviewer (Alex).
       TASK: Conduct a short pre-coding verbal interview.
@@ -194,7 +203,7 @@ class GeminiService {
     try {
       const completion = await this.groq.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
-        model: 'llama-3.1-8b-instant', // or 'mixtral-8x7b-32768'
+        model: 'llama-3.1-8b-instant',
         temperature: 0.6,
       });
       return JSON.parse(this.cleanJson(completion.choices[0]?.message?.content || '{}'));
@@ -204,10 +213,59 @@ class GeminiService {
     }
   }
 
-} // End of Class}
+  // =================================================================
+  // PHASE 6: FINAL EVALUATION (Combined Verbal + Coding)
+  // =================================================================
+  async generateFinalFeedback(history: any[], codingData: any): Promise<any> {
+    // Safety check: If history is empty, don't give 0 immediately if they coded well.
+    // If the server restarted, history might be empty, but we might have coding data.
+    
+    const prompt = `
+      ROLE: Senior Technical Interviewer at FAANG.
+      TASK: Generate a Final Report Card for the candidate.
 
+      🚨 INPUT DATA:
+      1. VERBAL TRANSCRIPT: ${JSON.stringify(history)}
+      2. CODING PERFORMANCE: ${JSON.stringify(codingData || { verdict: "DID NOT ATTEMPT", score: 0 })}
 
+      SCORING RUBRIC (Total 100):
+      1. Communication (0-30): Based on Verbal Transcript.
+      2. Technical Knowledge (0-30): Based on Verbal answers (definitions, theory).
+      3. Problem Solving (0-40): Based on CODING PERFORMANCE.
 
+      OUTPUT JSON ONLY:
+      {
+        "score": number, 
+        "breakdown": {
+          "communication": number,
+          "technical": number,
+          "problem_solving": number
+        },
+        "feedback_summary": "Strict summary of performance.",
+        "key_strengths": ["Strength 1"],
+        "areas_for_improvement": ["Improvement 1"]
+      }
+    `;
 
+    try {
+      const completion = await this.groq.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'llama-3.1-8b-instant', 
+        temperature: 0.2, 
+      });
+      return JSON.parse(this.cleanJson(completion.choices[0]?.message?.content || '{}'));
+    } catch (err) {
+      console.error("❌ FINAL REPORT ERROR:", err);
+      return { 
+        score: 0, 
+        breakdown: { communication: 0, technical: 0, problem_solving: 0 },
+        feedback_summary: "Error generating report. Please check server logs.", 
+        key_strengths: [], 
+        areas_for_improvement: [] 
+      };
+    }
+  }
+
+} // End of Class
 
 export default new GeminiService();
