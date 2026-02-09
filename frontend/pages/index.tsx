@@ -1,3 +1,4 @@
+import { useUser } from "@clerk/nextjs";
 import { useRouter } from 'next/router';
 import { useState } from 'react';
 import axios from 'axios';
@@ -12,6 +13,9 @@ interface CreateInterviewResponse {
 }
 
 export default function Home() {
+  // ✅ 1. Get the current user
+  const { user } = useUser(); 
+  
   const router = useRouter();
   const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty | null>(null);
   const [loading, setLoading] = useState(false);
@@ -21,18 +25,19 @@ export default function Home() {
 
     setLoading(true);
     try {
-      // 1. Call the Backend API
-      // We use the fallback to localhost:5001 in case .env is not set
+      // 2. Call the Backend API
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
       
       const response = await axios.post<CreateInterviewResponse>(`${apiUrl}/api/interview/create`, {
         difficulty: selectedDifficulty,
+        // Optional: We can pass the userId here if we want to associate the session immediately,
+        // but for now, we are saving it at the end via the socket.
+        userId: user ? user.id : undefined 
       });
 
       const { sessionId } = response.data;
 
-      // 2. Redirect to the Interview Page
-      // This will go to /pages/interview/[sessionId].tsx (which we will build next)
+      // 3. Redirect to the Interview Page
       router.push(`/interview/${sessionId}`);
 
     } catch (error: any) {
@@ -49,6 +54,9 @@ export default function Home() {
       <div className="container">
         <h1>DSA Interview Platform</h1>
         <p>Select a difficulty level to generate your question.</p>
+
+        {/* Show a welcome message if logged in */}
+        {user && <p className="welcome-text">Welcome back, {user.firstName}!</p>}
 
         <div className="difficulty-selector">
           {(['easy', 'medium', 'hard'] as Difficulty[]).map((level) => (
@@ -104,6 +112,11 @@ export default function Home() {
           font-size: 1rem;
           color: #666;
           margin-bottom: 2.5rem;
+        }
+        .welcome-text {
+          color: #0070f3;
+          font-weight: 600;
+          margin-bottom: 1.5rem;
         }
         .difficulty-selector {
           display: flex;

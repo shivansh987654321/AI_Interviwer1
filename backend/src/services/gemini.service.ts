@@ -1,5 +1,16 @@
 import Groq from 'groq-sdk';
-import { Difficulty, DSAQuestion, EvaluationResult } from '../types/interview.types';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+export interface DSAQuestion {
+  title: string;
+  description: string;
+  difficulty: string;
+  constraints: string[];
+  testCases: { input: string; output: string }[];
+  functionSignature: string;
+}
 
 class GeminiService {
   private groq: Groq;
@@ -12,93 +23,68 @@ class GeminiService {
     this.groq = new Groq({ apiKey: apiKey || 'dummy_key' });
   }
 
-  // 🧹 IMPROVED JSON CLEANER (The Fix for "System Error")
-  private cleanJson(text: string): string {
+  /**
+   * 🧹 ROBUST JSON CLEANER
+   * Handles: Markdown, bad quotes, and conversational wrappers.
+   */
+  private cleanAndParse(text: string): any {
     try {
-      // 1. Remove Markdown code blocks (```json ... ```)
+      // 1. Remove Markdown wrappers
       let clean = text.replace(/```json/g, "").replace(/```/g, "").trim();
-      
-      // 2. Find the first '{' and last '}' to strip extra text
+
+      // 2. Extract ONLY the first JSON object
+      // This fixes the issue where AI returns "Here is the JSON: { ... } and here is another { ... }"
       const firstBrace = clean.indexOf('{');
-      const lastBrace = clean.lastIndexOf('}');
+      let lastBrace = -1;
       
+      // We need to find the MATCHING closing brace, not just the last one
+      let braceCount = 0;
+      for (let i = firstBrace; i < clean.length; i++) {
+        if (clean[i] === '{') braceCount++;
+        if (clean[i] === '}') {
+          braceCount--;
+          if (braceCount === 0) {
+            lastBrace = i;
+            break;
+          }
+        }
+      }
+
       if (firstBrace !== -1 && lastBrace !== -1) {
         clean = clean.substring(firstBrace, lastBrace + 1);
       }
-      
-      return clean;
-    } catch (e) {
-      console.error("JSON Clean Error:", e);
-      return text; // Return original if regex fails
-    }
-  }
 
-  // =================================================================
-  // PHASE 4: PROBLEM-SOLVING (Coding Round)
-  // =================================================================
-  async generateDSAQuestion(difficulty: Difficulty): Promise<DSAQuestion> {
-    const prompt = `
-      ROLE: Realistic AI Interviewer (FAANG Level).
-      PHASE: 4 (Problem-Solving).
-      TASK: Ask ONE DSA problem based on difficulty: ${difficulty}.
-
-      Constraint: Do NOT give multiple problems.
-      Output: Return ONLY valid JSON.
-
-      JSON Format:
-      {
-        "title": "Problem Title",
-        "description": "Real-world interview problem description...",
-        "inputFormat": "Input format...",
-        "outputFormat": "Output format...",
-        "constraints": "Constraints...",
-        "example": {
-          "input": "Example input",
-          "output": "Example output",
-          "explanation": "Brief explanation"
-        },
-        "starterCode": "function solution() {\\n  // write code here\\n}"
-      }
-    `;
-
-    try {
-      const completion = await this.groq.chat.completions.create({
-        messages: [{ role: 'user', content: prompt }],
-        model: 'llama-3.1-8b-instant',
-        temperature: 0.7,
+      // 3. Escape bad newlines inside strings (Common AI error)
+      clean = clean.replace(/("[\s\S]*?")/g, (match) => {
+        return match.replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
       });
-      return JSON.parse(this.cleanJson(completion.choices[0]?.message?.content || '{}'));
-    } catch (err) {
-      console.error('Groq Gen Error:', err);
-      return {
-        title: "Two Sum (Fallback)",
-        description: "Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.",
-        inputFormat: "Array of integers",
-        outputFormat: "Array of two integers",
-        constraints: "2 <= nums.length <= 10^4",
-        example: { input: "nums = [2,7], target = 9", output: "[0,1]", explanation: "2+7=9" },
-        starterCode: "function solution(nums, target) {\n  // write code here\n}"
-      };
+
+      return JSON.parse(clean);
+
+    } catch (e) {
+      console.error("❌ JSON Parse Failed. Raw text fragment:", text.substring(0, 100) + "...");
+      return null;
     }
   }
 
   // =================================================================
-  // PHASE 4 EVALUATION (Strict but Human-like)
+  // PHASE 4: PROBLEM-SOLVING
   // =================================================================
-  async evaluateCode(question: DSAQuestion, code: string, language: string): Promise<EvaluationResult> {
+  async generateDSAQuestion(level: string): Promise<DSAQuestion> {
     const prompt = `
-      ROLE: Technical Interviewer.
-      TASK: Review code for "${question.title}".
+      Generate a unique ${level}-level Data Structures and Algorithms (DSA) coding interview question.
+      Return STRICT JSON format only.
       
-      CODE (${language}):
-      ${code}
-
-      OUTPUT JSON ONLY:
+      Structure:
       {
-        "score": number (0-100),
-        "verdict": "Accepted" | "Wrong Answer" | "Compilation Error",
-        "feedback": "string",
-        "improvements": ["string"]
+        "title": "Short Title",
+        "description": "Problem statement...",
+        "difficulty": "${level}",
+        "constraints": ["Constraint 1"],
+        "testCases": [
+           {"input": "arg1=val", "output": "val"}
+        ],
+        "functionSignature": "function solve(args) {"
       }
     `;
 
@@ -106,63 +92,33 @@ class GeminiService {
       const completion = await this.groq.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
         model: 'llama-3.1-8b-instant',
-        temperature: 0.2,
+        temperature: 0.6,
       });
 
       const rawText = completion.choices[0]?.message?.content || '{}';
-      const cleanText = this.cleanJson(rawText);
-      
-      return JSON.parse(cleanText);
+      const question = this.cleanAndParse(rawText);
 
-    } catch (err) {
-      console.error("❌ EVALUATION ERROR:", err); 
-      return { 
-        score: 0, 
-        verdict: "Compilation Error", 
-        feedback: "System could not evaluate code. Please try again.", 
-        improvements: [] 
+      if (!question) throw new Error("Parsed JSON was null");
+
+      return {
+        title: question.title || "Unknown Problem",
+        description: question.description || "No description provided.",
+        difficulty: question.difficulty || level,
+        testCases: question.testCases || [],
+        constraints: question.constraints || [],
+        functionSignature: question.functionSignature || "function solution() {"
       };
-    }
-  }
 
-  // =================================================================
-  // PHASE 5: INTERVIEW CLOSURE (Verbal Closing)
-  // =================================================================
-  async generateInterviewFeedback(scores: any[]): Promise<any> {
-    const prompt = `
-      ROLE: Realistic AI Interviewer.
-      PHASE: 5 (Interview Closure).
-      CONTEXT: The interview is finishing.
-      DATA: Candidate's performance: ${JSON.stringify(scores)}
-
-      INSTRUCTION:
-      The "Detailed Report" feature is DELETED. 
-      Instead, provide a polite, verbal closing statement.
-      
-      1. Give verbal feedback on their problem-solving approach.
-      2. Mention 1 strength and 1 area for improvement.
-      3. End with: "Do you have any questions for me?"
-
-      Return JSON (to satisfy frontend structure):
-      {
-        "strengths": ["(Verbal feedback strength)"],
-        "weaknesses": ["(Verbal feedback improvement)"],
-        "recommendations": ["(Final closing words)"]
-      }
-    `;
-
-    try {
-      const completion = await this.groq.chat.completions.create({
-        messages: [{ role: 'user', content: prompt }],
-        model: 'llama-3.1-8b-instant',
-        temperature: 0.7,
-      });
-      return JSON.parse(this.cleanJson(completion.choices[0]?.message?.content || '{}'));
     } catch (err) {
-      return { 
-        strengths: ["Good effort."], 
-        weaknesses: ["Connection instability."], 
-        recommendations: ["Thank you for your time."] 
+      console.error('Groq Gen Error:', err);
+      // FALLBACK
+      return {
+        title: "Two Sum (Fallback)",
+        description: "Given an array of integers, return indices of the two numbers such that they add up to a specific target.",
+        difficulty: "easy",
+        constraints: ["2 <= nums.length <= 10^4"],
+        testCases: [{ input: "nums = [2,7,11,15], target = 9", output: "[0,1]" }],
+        functionSignature: "function twoSum(nums, target) {"
       };
     }
   }
@@ -170,32 +126,23 @@ class GeminiService {
   // =================================================================
   // PHASE 1-3: VERBAL CONVERSATION
   // =================================================================
-  async generateVerbalResponse(history: any[], userTranscript: string): Promise<{ text: string; action?: string }> {
+  async generateVerbalResponse(history: any[], userMessage: string): Promise<{ text: string; action?: string }> {
     const prompt = `
-      ROLE: Friendly but professional FAANG Interviewer (Alex).
-      TASK: Conduct a short pre-coding verbal interview.
+      ROLE: FAANG Interviewer.
+      TASK: Verbal interview.
       
       CONTEXT:
-      - You are the interviewer. The candidate is speaking to you.
-      - Current History: ${JSON.stringify(history)}
-      - Candidate just said: "${userTranscript}"
+      - History: ${JSON.stringify(history)}
+      - Candidate said: "${userMessage}"
 
       INSTRUCTIONS:
-      1. CRITICAL: Check the HISTORY. 
-         - If the history is empty, Introduce yourself (Alex from FAANG) and ask about their background.
-         - If you have ALREADY introduced yourself in the history, DO NOT introduce yourself again.
+      1. If history is empty, introduce yourself.
+      2. Ask ONE technical theory question.
+      3. If answer is good, set "action": "START_CODING".
       
-      2. FLOW:
-         - If the candidate answered the background question, move to ONE technical theory question (e.g., "What is the difference between an Array and a Linked List?").
-         - If they answered the theory question reasonably well, say "That's great. Let's move on to the coding problem." and set "action": "START_CODING".
-      
-      3. TONE:
-         - Keep responses conversational and BRIEF (max 2 sentences).
-         - Do not be robotic.
-
-      OUTPUT JSON ONLY:
+      OUTPUT JSON:
       {
-        "text": "Your verbal response here...",
+        "text": "Response...",
         "action": "CONTINUE" or "START_CODING"
       }
     `;
@@ -206,44 +153,38 @@ class GeminiService {
         model: 'llama-3.1-8b-instant',
         temperature: 0.6,
       });
-      return JSON.parse(this.cleanJson(completion.choices[0]?.message?.content || '{}'));
+      
+      const rawText = completion.choices[0]?.message?.content || '{}';
+      const result = this.cleanAndParse(rawText);
+      
+      return result || { text: "I didn't quite catch that.", action: "CONTINUE" };
+
     } catch (err) {
-      console.error("Verbal Gen Error:", err);
-      return { text: "I didn't catch that. Could you repeat?", action: "CONTINUE" };
+      return { text: "Could you please repeat that?", action: "CONTINUE" };
     }
   }
 
   // =================================================================
-  // PHASE 6: FINAL EVALUATION (Combined Verbal + Coding)
+  // PHASE 6: FINAL EVALUATION (Report Card)
   // =================================================================
-  async generateFinalFeedback(history: any[], codingData: any): Promise<any> {
-    // Safety check: If history is empty, don't give 0 immediately if they coded well.
-    // If the server restarted, history might be empty, but we might have coding data.
-    
+  async generateFinalFeedback(chatHistory: any[], codingResult: any): Promise<any> {
     const prompt = `
-      ROLE: Senior Technical Interviewer at FAANG.
-      TASK: Generate a Final Report Card for the candidate.
+      Analyze this interview session and provide a JSON report card.
+      
+      Chat History: ${JSON.stringify(chatHistory)}
+      Coding Result: ${JSON.stringify(codingResult)}
 
-      🚨 INPUT DATA:
-      1. VERBAL TRANSCRIPT: ${JSON.stringify(history)}
-      2. CODING PERFORMANCE: ${JSON.stringify(codingData || { verdict: "DID NOT ATTEMPT", score: 0 })}
-
-      SCORING RUBRIC (Total 100):
-      1. Communication (0-30): Based on Verbal Transcript.
-      2. Technical Knowledge (0-30): Based on Verbal answers (definitions, theory).
-      3. Problem Solving (0-40): Based on CODING PERFORMANCE.
-
-      OUTPUT JSON ONLY:
+      Return STRICT JSON:
       {
-        "score": number, 
+        "score": number (0-100),
         "breakdown": {
-          "communication": number,
-          "technical": number,
-          "problem_solving": number
+            "communication": number (0-30),
+            "technical": number (0-30),
+            "problem_solving": number (0-40)
         },
-        "feedback_summary": "Strict summary of performance.",
-        "key_strengths": ["Strength 1"],
-        "areas_for_improvement": ["Improvement 1"]
+        "feedback_summary": "1-2 sentences overview",
+        "key_strengths": ["point 1", "point 2"],
+        "areas_for_improvement": ["point 1", "point 2"]
       }
     `;
 
@@ -253,19 +194,33 @@ class GeminiService {
         model: 'llama-3.1-8b-instant', 
         temperature: 0.2, 
       });
-      return JSON.parse(this.cleanJson(completion.choices[0]?.message?.content || '{}'));
+
+      const rawText = completion.choices[0]?.message?.content || '{}';
+      const result = this.cleanAndParse(rawText);
+
+      // 🛡️ CRITICAL CHECK: Ensure 'breakdown' exists
+      if (!result || !result.breakdown) {
+          throw new Error("Invalid Report Format");
+      }
+
+      return result;
+
     } catch (err) {
-      console.error("❌ FINAL REPORT ERROR:", err);
+      console.error("Feedback Gen Error:", err);
+      // ✅ ROBUST FALLBACK (Prevents Frontend Crash)
       return { 
         score: 0, 
-        breakdown: { communication: 0, technical: 0, problem_solving: 0 },
-        feedback_summary: "Error generating report. Please check server logs.", 
+        breakdown: {
+            communication: 0,
+            technical: 0,
+            problem_solving: 0
+        },
+        feedback_summary: "Could not generate report due to AI error.", 
         key_strengths: [], 
-        areas_for_improvement: [] 
+        areas_for_improvement: ["System Error - Please try again"] 
       };
     }
   }
-
-} // End of Class
+}
 
 export default new GeminiService();

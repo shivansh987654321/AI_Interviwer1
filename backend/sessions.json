@@ -7712,5 +7712,719 @@
     "status": "active",
     "duration": 900,
     "createdAt": "2026-02-09T20:39:05.456Z"
+  },
+  "902b40bc-40dd-4ddf-8210-9e484f404658": {
+    "id": "902b40bc-40dd-4ddf-8210-9e484f404658",
+    "startTime": "2026-02-09T21:47:18.416Z",
+    "questions": [
+      {
+        "title": "Reverse String",
+        "description": "Write a function that takes a string as input and returns the string reversed.",
+        "inputFormat": "String",
+        "outputFormat": "String",
+        "constraints": "The input string will only contain ASCII characters",
+        "example": {
+          "input": "Hello World",
+          "output": "dlroW olleH",
+          "explanation": "This example shows the input string and its reversed output."
+        },
+        "starterCode": "function solution(str) {\n  // write code here\n}"
+      },
+      {
+        "title": "Valid Palindrome",
+        "description": "A palindrome is a string that reads the same backward as forward. Given a string, write a function to check if it's a palindrome.",
+        "inputFormat": "Input a string",
+        "outputFormat": "Return true if the string is a palindrome, false otherwise",
+        "constraints": "Case sensitive",
+        "example": {
+          "input": "madam",
+          "output": "true",
+          "explanation": "The string 'madam' reads the same backward as forward."
+        },
+        "starterCode": "function solution(str) {\n  // write code here\n}"
+      },
+      {
+        "title": "Reverse String",
+        "description": "Write a function that takes a string as input and returns the string with all characters reversed. For example, if the input string is 'hello', the function should return 'olleh'. This function should be case-sensitive and should work for strings of any length.",
+        "inputFormat": "string",
+        "outputFormat": "string",
+        "constraints": "The input string will only contain ASCII characters.",
+        "example": {
+          "input": "hello",
+          "output": "olleh",
+          "explanation": "This example shows how the function should handle a simple string reversal."
+        },
+        "starterCode": "function solution(str) {\n  // write code here\n}"
+      }
+    ],
+    "currentQuestionIndex": 0,
+    "question": {
+      "title": "Reverse String",
+      "description": "Write a function that takes a string as input and returns the string reversed.",
+      "inputFormat": "String",
+      "outputFormat": "String",
+      "constraints": "The input string will only contain ASCII characters",
+      "example": {
+        "input": "Hello World",
+        "output": "dlroW olleH",
+        "explanation": "This example shows the input string and its reversed output."
+      },
+      "starterCode": "function solution(str) {\n  // write code here\n}"
+    },
+    "scores": [],
+    "status": "active",
+    "duration": 900,
+    "createdAt": "2026-02-09T21:47:18.416Z"
+  },
+  "970777bf-b506-4070-a9ce-0a7441971a68": {
+    "id": "970777bf-b506-4070-a9ce-0a7441971a68",
+    "startTime": "2026-02-09T21:51:04.741Z",
+    "questions": [
+      {
+        "title": "Two Sum (Fallback)",
+        "description": "Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.",
+        "inputFormat": "Array of integers",
+        "outputFormat": "Array of two integers",
+        "constraints": "2 <= nums.length <= 10^4",
+        "example": {
+          "input": "nums = [2,7], target = 9",
+          "output": "[0,1]",
+          "explanation": "2+7=9"
+        },
+        "starterCode": "function solution(nums, target) {\n  // write code here\n}"
+      },
+      {
+        "title": "Valid Mountain Array",
+        "description": "Given an array of integers A representing a mountain array where every peak and valley is distinct, determine whether the mountain array is valid.",
+        "inputFormat": "Input format: integers in an array, e.g. [0,1,0,2,1,0,1,3,2,1,2,1]",
+        "outputFormat": "Output format: boolean, true if the mountain array is valid, false otherwise",
+        "constraints": "Constraints: 1 <= A.length <= 10^5, 0 <= A[i] <= 10^5, A is a mountain array with distinct peaks and valleys",
+        "example": {
+          "input": "[0,1,0,2,1,0,1,3,2,1,2,1]",
+          "output": "true",
+          "explanation": "The mountain array is valid because every peak and valley is distinct."
+        },
+        "starterCode": "function validMountainArray(A) {\n  // write code here\n}"
+      },
+      {
+        "title": "Single Number in Doubly Linked List",
+        "description": "Given a doubly linked list, find the node with the given value. If the list contains only one node, return that node.",
+        "inputFormat": "A doubly linked list, where each node has a value and pointers to the previous and next nodes.",
+        "outputFormat": "The node with the given value, or null if the node does not exist in the list.",
+        "constraints": "The input list is non-empty, and each node's value is unique.",
+        "example": {
+          "input": "The linked list 1 -> 2 -> 3, and the value to find is 2.",
+          "output": "The node with value 2.",
+          "explanation": "This is a simple problem to get you started with linked lists."
+        },
+        "starterCode": "function solution(head, value) {\n  // write code here\n}"
+      }
+    ],
+    "currentQuestionIndex": 0,
+    "question": {
+      "title": "Two Sum (Fallback)",
+      "description": "Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.",
+      "inputFormat": "Array of integers",
+      "outputFormat": "Array of two integers",
+      "constraints": "2 <= nums.length <= 10^4",
+      "example": {
+        "input": "nums = [2,7], target = 9",
+        "output": "[0,1]",
+        "explanation": "2+7=9"
+      },
+      "starterCode": "function solution(nums, target) {\n  // write code here\n}"
+    },
+    "scores": [],
+    "status": "active",
+    "duration": 900,
+    "createdAt": "2026-02-09T21:51:04.741Z"
+  },
+  "3ffbdc23-fc07-465d-a6b6-277ce2bdbb5a": {
+    "id": "3ffbdc23-fc07-465d-a6b6-277ce2bdbb5a",
+    "startTime": "2026-02-09T21:51:49.131Z",
+    "questions": [
+      {
+        "title": "Unique Email Addresses",
+        "description": "You are given a list of email addresses. Each email address consists of a local part and a domain part separated by '@'. The local part can contain alphanumeric characters or '.'. The domain part can contain alphanumeric characters or '.'. A valid email address must satisfy the following conditions:\n  - The local part and the domain part are separated by '@'.\n  - The local part does not contain '@'.\n  - The domain part does not contain '@'.\n  - The domain part can contain alphanumeric characters or '.'.\n\nYou need to return the count of unique email addresses.",
+        "inputFormat": "[String] email",
+        "outputFormat": "Number",
+        "constraints": "The length of email will not exceed 100. The length of each email will not exceed 70.",
+        "example": {
+          "input": "['test.email+alex@leetcode.com','test.e.mail+bob.cathy@leetcode.com','testemail+david@lee.tcode.com']",
+          "output": "2",
+          "explanation": "The unique email addresses are 'testemail@leetcode.com' and 'testemail@lee.tcode.com'."
+        },
+        "starterCode": "function solution(email) {\n  // write code here\n}"
+      },
+      {
+        "title": "Container With Most Water",
+        "description": "Given n non-negative integers a1, a2, ..., an , where each represents a point at coordinate (i, ai). n vertical lines are drawn such that the two endpoints of line i is at (i, ai) and (i, 0). Find two lines, which together with x-axis forms a container, such that the area of water it contains is the maximum.",
+        "inputFormat": "Input: [1,8,6,2,5,4,8,3,7] Output: 49",
+        "outputFormat": "Maximum area of water that can be trapped between lines",
+        "constraints": "1 <= n <= 2 * 10^5, 0 <= ai <= 10^4",
+        "example": {
+          "input": "[1,8,6,2,5,4,8,3,7]",
+          "output": 49,
+          "explanation": "Two lines that together with the x-axis forms a container can be formed with the lines at coordinates (1,8) and (8,3), and the maximum area of water that can be trapped is 49."
+        },
+        "starterCode": "function maxArea(height) {\n  // write code here\n}"
+      },
+      {
+        "title": "Reverse Integer",
+        "description": "Given a 32-bit signed integer, reverse the integer without using any extra space. If the reversed integer is outside the 32-bit signed integer range, return 0.",
+        "inputFormat": "Input: an integer",
+        "outputFormat": "Output: an integer",
+        "constraints": "Integer range: [-2147483648, 2147483647]",
+        "example": {
+          "input": "-123",
+          "output": "-321",
+          "explanation": "Reverse the input integer without using extra space"
+        },
+        "starterCode": "function reverseInteger(n) {\n  // write code here\n}"
+      }
+    ],
+    "currentQuestionIndex": 0,
+    "question": {
+      "title": "Unique Email Addresses",
+      "description": "You are given a list of email addresses. Each email address consists of a local part and a domain part separated by '@'. The local part can contain alphanumeric characters or '.'. The domain part can contain alphanumeric characters or '.'. A valid email address must satisfy the following conditions:\n  - The local part and the domain part are separated by '@'.\n  - The local part does not contain '@'.\n  - The domain part does not contain '@'.\n  - The domain part can contain alphanumeric characters or '.'.\n\nYou need to return the count of unique email addresses.",
+      "inputFormat": "[String] email",
+      "outputFormat": "Number",
+      "constraints": "The length of email will not exceed 100. The length of each email will not exceed 70.",
+      "example": {
+        "input": "['test.email+alex@leetcode.com','test.e.mail+bob.cathy@leetcode.com','testemail+david@lee.tcode.com']",
+        "output": "2",
+        "explanation": "The unique email addresses are 'testemail@leetcode.com' and 'testemail@lee.tcode.com'."
+      },
+      "starterCode": "function solution(email) {\n  // write code here\n}"
+    },
+    "scores": [],
+    "status": "active",
+    "duration": 900,
+    "createdAt": "2026-02-09T21:51:49.131Z"
+  },
+  "455b8962-c68b-496b-9115-32255c83a64c": {
+    "id": "455b8962-c68b-496b-9115-32255c83a64c",
+    "startTime": "2026-02-09T21:51:55.517Z",
+    "questions": [
+      {
+        "title": "Reverse String",
+        "description": "Write a function that takes a string as input and returns the reversed string.",
+        "inputFormat": "string",
+        "outputFormat": "string",
+        "constraints": "The input string can be of any length, but it will only contain ASCII characters.",
+        "example": {
+          "input": "Hello, World!",
+          "output": "!dlroW ,olleH",
+          "explanation": "Reverses the input string."
+        },
+        "starterCode": "function solution(s) {\n  // write code here\n}"
+      },
+      {
+        "title": "Remove Duplicates from Sorted Array",
+        "description": "Given a sorted array, remove duplicates from it. Example: input [1, 1, 2, 3, 3, 3, 4, 4, 4, 4] should return [1, 2, 3, 4].",
+        "inputFormat": "Input is a sorted array of integers.",
+        "outputFormat": "Return a new sorted array of integers with duplicates removed.",
+        "constraints": "Input array can be empty or contain duplicate elements.",
+        "example": {
+          "input": "[1, 1, 2, 3, 3, 3, 4, 4, 4, 4]",
+          "output": "[1, 2, 3, 4]",
+          "explanation": "Return the new array with duplicates removed."
+        },
+        "starterCode": "function removeDuplicates(nums) {\n  // write code here\n}"
+      },
+      {
+        "title": "Reverse Linked List",
+        "description": "Write a function to reverse a linked list. The function should take the head of the linked list as input and return the head of the reversed linked list.",
+        "inputFormat": "Input: The head of a singly linked list.",
+        "outputFormat": "Output: The head of the reversed linked list.",
+        "constraints": "The linked list node structure is not provided, you are expected to use a basic linked list node with an integer value and a pointer to the next node.",
+        "example": {
+          "input": "1 -> 2 -> 3 -> 4 -> 5",
+          "output": "5 -> 4 -> 3 -> 2 -> 1",
+          "explanation": "The example input is a linked list with five nodes. The output is the reversed linked list."
+        },
+        "starterCode": "class Node {\n  constructor(x) {\n    this.val = x;\n    this.next = null;\n  }\n}\nfunction reverseList(head) {\n  // write code here\n}"
+      }
+    ],
+    "currentQuestionIndex": 0,
+    "question": {
+      "title": "Reverse String",
+      "description": "Write a function that takes a string as input and returns the reversed string.",
+      "inputFormat": "string",
+      "outputFormat": "string",
+      "constraints": "The input string can be of any length, but it will only contain ASCII characters.",
+      "example": {
+        "input": "Hello, World!",
+        "output": "!dlroW ,olleH",
+        "explanation": "Reverses the input string."
+      },
+      "starterCode": "function solution(s) {\n  // write code here\n}"
+    },
+    "scores": [],
+    "status": "active",
+    "duration": 900,
+    "createdAt": "2026-02-09T21:51:55.517Z"
+  },
+  "b8074042-4d7f-42eb-8bd2-6e700c3c3871": {
+    "id": "b8074042-4d7f-42eb-8bd2-6e700c3c3871",
+    "startTime": "2026-02-09T22:08:11.648Z",
+    "questions": [
+      {
+        "title": "Reverse Integer",
+        "description": "Given an integer, return its reversed integer.",
+        "inputFormat": "Input is a single integer.",
+        "outputFormat": "Output is the reversed integer.",
+        "constraints": "The integer may be negative.",
+        "example": {
+          "input": "-123",
+          "output": "-321",
+          "explanation": "The input -123 is reversed to -321."
+        },
+        "starterCode": "function reverseInteger(x) {\n  let result = 0;\n  // write code here\n}"
+      },
+      {
+        "title": "Find the Duplicate Number",
+        "description": "Given an array of integers between 1 and n (inclusive), where n is the size of the array, there is at least one duplicate number. Return the duplicate number.",
+        "inputFormat": "An array of integers",
+        "outputFormat": "The duplicate number",
+        "constraints": "1 <= n <= 3*10^4, 1 <= arr[i] <= n, all elements in the array are unique except for one, all numbers in the array are between 1 and n, inclusive.",
+        "example": {
+          "input": "[1,3,4,2,2]",
+          "output": "2",
+          "explanation": "The duplicate number is 2, which appears twice in the array."
+        },
+        "starterCode": "function findDuplicate(nums) {\n  // write code here\n}"
+      },
+      {
+        "title": "Search Insert Position",
+        "description": "Given a sorted array of distinct integers, write a function to find a given number in the array. The function should return the index of the number if found, otherwise, return the index where the number should be inserted to maintain the sorted order.",
+        "inputFormat": "Input: nums = [1, 3, 5, 6], target = 5",
+        "outputFormat": "Output: 2",
+        "constraints": "nums is a sorted array of distinct integers, target is an integer",
+        "example": {
+          "input": "[1, 3, 5, 6], 5",
+          "output": 2,
+          "explanation": "The number 5 is found at index 2 in the array"
+        },
+        "starterCode": "function searchInsert(nums, target) {\n  // write code here\n}"
+      }
+    ],
+    "currentQuestionIndex": 0,
+    "question": {
+      "title": "Reverse Integer",
+      "description": "Given an integer, return its reversed integer.",
+      "inputFormat": "Input is a single integer.",
+      "outputFormat": "Output is the reversed integer.",
+      "constraints": "The integer may be negative.",
+      "example": {
+        "input": "-123",
+        "output": "-321",
+        "explanation": "The input -123 is reversed to -321."
+      },
+      "starterCode": "function reverseInteger(x) {\n  let result = 0;\n  // write code here\n}"
+    },
+    "scores": [],
+    "status": "active",
+    "duration": 900,
+    "createdAt": "2026-02-09T22:08:11.648Z"
+  },
+  "abcd9cd5-9d0a-4556-b505-d9a1ce796681": {
+    "id": "abcd9cd5-9d0a-4556-b505-d9a1ce796681",
+    "startTime": "2026-02-09T22:08:34.748Z",
+    "questions": [
+      {
+        "title": "Maximum Subarray Sum",
+        "description": "Given an integer array nums, find the contiguous subarray (containing at least one number) which has the largest sum and return its sum.",
+        "inputFormat": "Input will be an array of integers.",
+        "outputFormat": "Output will be a single integer representing the maximum subarray sum.",
+        "constraints": "Input array will not be empty and will contain at least one element.",
+        "example": {
+          "input": "[-2,1,-3,4,-1,2,1,-5,4]",
+          "output": "6",
+          "explanation": "The maximum subarray sum is 6 (from -2,1,-3,4,-1,2,1) which is not contiguous, but another subarray 4,-1,2,1 has sum 6."
+        },
+        "starterCode": "function maxSubArray(nums) {\n  // write code here\n}"
+      },
+      {
+        "title": "Find the First Repeating Element",
+        "description": "Given an array of integers, find the first repeating element in the array.",
+        "inputFormat": "Input: [int[]] - An array of integers.",
+        "outputFormat": "Output: int - The first repeating element in the array.",
+        "constraints": "The array may contain duplicate elements, and the repeating element can be any integer in the array.",
+        "example": {
+          "input": "[2, 3, 1, 2, 3, 4]",
+          "output": "2",
+          "explanation": "The first repeating element in the array is 2."
+        },
+        "starterCode": "function solution(nums) {\n  // write code here\n}"
+      },
+      {
+        "title": "Contains Duplicate",
+        "description": "Given an integer array nums, return true if any value appears at least twice in the array. A follow-up question is: Could you do it in O(n) time complexity?",
+        "inputFormat": "Input is an array of integers, e.g. [1,2,3,1,2]",
+        "outputFormat": "Return a boolean indicating whether there are duplicate values",
+        "constraints": "Length of the input array is at least 1. Number of elements in the array does not exceed 10^4",
+        "example": {
+          "input": "[1,2,3,1,2]",
+          "output": "true",
+          "explanation": "The input array contains two duplicates, 1 and 2."
+        },
+        "starterCode": "function containsDuplicate(nums) {\n  // write code here\n}"
+      }
+    ],
+    "currentQuestionIndex": 0,
+    "question": {
+      "title": "Maximum Subarray Sum",
+      "description": "Given an integer array nums, find the contiguous subarray (containing at least one number) which has the largest sum and return its sum.",
+      "inputFormat": "Input will be an array of integers.",
+      "outputFormat": "Output will be a single integer representing the maximum subarray sum.",
+      "constraints": "Input array will not be empty and will contain at least one element.",
+      "example": {
+        "input": "[-2,1,-3,4,-1,2,1,-5,4]",
+        "output": "6",
+        "explanation": "The maximum subarray sum is 6 (from -2,1,-3,4,-1,2,1) which is not contiguous, but another subarray 4,-1,2,1 has sum 6."
+      },
+      "starterCode": "function maxSubArray(nums) {\n  // write code here\n}"
+    },
+    "scores": [],
+    "status": "active",
+    "duration": 900,
+    "createdAt": "2026-02-09T22:08:34.748Z"
+  },
+  "b798c875-1add-4f6e-add3-de56e5ecea25": {
+    "id": "b798c875-1add-4f6e-add3-de56e5ecea25",
+    "startTime": "2026-02-09T22:15:06.064Z",
+    "questions": [
+      {
+        "title": "Check if a Number is Prime",
+        "description": "Write a function to check if a given number is prime or not.",
+        "inputFormat": "An integer",
+        "outputFormat": "A boolean indicating whether the number is prime or not",
+        "constraints": "The function should handle negative numbers and zero as not prime",
+        "example": {
+          "input": "17",
+          "output": "true",
+          "explanation": "17 is a prime number"
+        },
+        "starterCode": "function isPrime(n) {\n  if (n <= 1) return false;\n  // write code here\n}"
+      },
+      {
+        "title": "Search Insert Position",
+        "description": "Given a sorted array of distinct integers and a target value, return the index if the target is found. If not, return the index where it will be if it were inserted in order.",
+        "inputFormat": "Input format: nums: int[] (sorted array), target: int",
+        "outputFormat": "Output format: int (index)",
+        "constraints": "Constraints: 1 <= nums.length <= 3 * 10^4, -10^4 <= nums[i] <= 10^4, -10^4 <= target <= 10^4",
+        "example": {
+          "input": "[1, 3, 5, 6], 5",
+          "output": "2",
+          "explanation": "The target value 5 is found at index 2."
+        },
+        "starterCode": "function searchInsert(nums, target) {\n  // write code here\n}"
+      },
+      {
+        "title": "Maximum Subarray Sum",
+        "description": "Given an integer array nums, find the contiguous subarray (containing at least one number) which has the largest sum and return its sum.",
+        "inputFormat": "Input an integer array nums.",
+        "outputFormat": "Return the maximum sum of subarray.",
+        "constraints": "The input array will only contain integers. The array will not be empty.",
+        "example": {
+          "input": "[-2,1,-3,4,-1,2,1,-5,4]",
+          "output": 6,
+          "explanation": "The contiguous subarray [4,-1,2,1] has the largest sum equal to 6."
+        },
+        "starterCode": "function maxSubArray(nums) {\n  // write code here\n}"
+      }
+    ],
+    "currentQuestionIndex": 0,
+    "question": {
+      "title": "Check if a Number is Prime",
+      "description": "Write a function to check if a given number is prime or not.",
+      "inputFormat": "An integer",
+      "outputFormat": "A boolean indicating whether the number is prime or not",
+      "constraints": "The function should handle negative numbers and zero as not prime",
+      "example": {
+        "input": "17",
+        "output": "true",
+        "explanation": "17 is a prime number"
+      },
+      "starterCode": "function isPrime(n) {\n  if (n <= 1) return false;\n  // write code here\n}"
+    },
+    "scores": [],
+    "status": "active",
+    "duration": 900,
+    "createdAt": "2026-02-09T22:15:06.064Z"
+  },
+  "67883acd-069a-42e9-80a5-4ccb79198b50": {
+    "id": "67883acd-069a-42e9-80a5-4ccb79198b50",
+    "startTime": "2026-02-09T22:15:33.556Z",
+    "questions": [
+      {
+        "title": "Minimum Window Substring",
+        "description": "Given two strings `s` and `t`, return the minimum window in `s` which will contain all the characters of `t`. If there is no such window, return an empty string.",
+        "inputFormat": "Input two strings: `s` and `t`",
+        "outputFormat": "Minimum window substring in `s` that contains all characters of `t`",
+        "constraints": "Time complexity should be O(n), where n is the length of string `s`",
+        "example": {
+          "input": "s = \"ADOBECODEBANC\", t = \"ABC\"",
+          "output": "BANC",
+          "explanation": "The minimum window substring is \"BANC\" as it contains all characters of \"ABC\""
+        },
+        "starterCode": "function minWindow(s, t) {\n  // write code here\n}"
+      },
+      {
+        "title": "Two Sum (Fallback)",
+        "description": "Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.",
+        "inputFormat": "Array of integers",
+        "outputFormat": "Array of two integers",
+        "constraints": "2 <= nums.length <= 10^4",
+        "example": {
+          "input": "nums = [2,7], target = 9",
+          "output": "[0,1]",
+          "explanation": "2+7=9"
+        },
+        "starterCode": "function solution(nums, target) {\n  // write code here\n}"
+      },
+      {
+        "title": "Range Sum Query - Mutable",
+        "description": "Given an integer array nums, handle multiple queries of the following two functions: update(i, val) and sum(range[i..j])",
+        "inputFormat": "Input format:\nnums: array of integers\nupdate: list of arrays, where each array contains two integers i and val\nq: list of integers representing the sum query\n",
+        "outputFormat": "Output format:\nlist of integers representing the sum of each query",
+        "constraints": "1 <= nums.length <= 2 * 10^5\n-1000 <= nums[i] <= 1000\n1 <= i <= nums.length\n1 <= val <= 1000\n1 <= q.length <= 10^4\n1 <= i, j <= nums.length\ni <= j\n",
+        "example": {
+          "input": "nums = [1, 3, 5]\nupdate = [[2, 100], [0, 50]]\nq = [0, 2]\n",
+          "output": "[150, 150]\n",
+          "explanation": "For the first query, we update the value at index 2 with 100.\nFor the second query, we update the value at index 0 with 50.\nThen, we query the sum of the first and last element of the array.\n"
+        },
+        "starterCode": "class NumArray {\n  constructor(nums) {\n    this.nums = nums;\n  }\n\n  update(i, val) {\n    // write update logic here\n  }\n\n  sumRange(i, j) {\n    // write sum logic here\n  }\n}"
+      }
+    ],
+    "currentQuestionIndex": 0,
+    "question": {
+      "title": "Minimum Window Substring",
+      "description": "Given two strings `s` and `t`, return the minimum window in `s` which will contain all the characters of `t`. If there is no such window, return an empty string.",
+      "inputFormat": "Input two strings: `s` and `t`",
+      "outputFormat": "Minimum window substring in `s` that contains all characters of `t`",
+      "constraints": "Time complexity should be O(n), where n is the length of string `s`",
+      "example": {
+        "input": "s = \"ADOBECODEBANC\", t = \"ABC\"",
+        "output": "BANC",
+        "explanation": "The minimum window substring is \"BANC\" as it contains all characters of \"ABC\""
+      },
+      "starterCode": "function minWindow(s, t) {\n  // write code here\n}"
+    },
+    "scores": [],
+    "status": "active",
+    "duration": 2700,
+    "createdAt": "2026-02-09T22:15:33.556Z"
+  },
+  "4b6438b7-f704-4a0d-972e-75a8b2770181": {
+    "id": "4b6438b7-f704-4a0d-972e-75a8b2770181",
+    "startTime": "2026-02-09T22:20:21.478Z",
+    "questions": [
+      {
+        "title": "Minimum Window Substring",
+        "description": "Given two strings `s` and `t`, find the minimum window in `s` that contains all characters of `t`. If no such window exists, return an empty string.",
+        "difficulty": "medium",
+        "testCases": [
+          {
+            "input": "{\"s\": \"ADOBECODEBANC\", \"t\": \"ABC\"}",
+            "output": "\"CAB\""
+          },
+          {
+            "input": "{\"s\": \"a\", \"t\": \"a\"}",
+            "output": "\"a\""
+          },
+          {
+            "input": "{\"s\": \"a\", \"t\": \"aa\"}",
+            "output": "null"
+          }
+        ],
+        "constraints": [
+          "The characters in `t` can only appear in `s` in the same order (i.e., it is a subsequence of `s`).",
+          "The window must start from the beginning of `s`.",
+          "The window must contain at least one character of `t`."
+        ],
+        "functionSignature": "function minWindow(s, t) {"
+      },
+      {
+        "title": "Two Sum (Fallback)",
+        "description": "Given an array of integers, return indices of the two numbers such that they add up to a specific target.",
+        "difficulty": "easy",
+        "constraints": [
+          "2 <= nums.length <= 10^4"
+        ],
+        "testCases": [
+          {
+            "input": "nums = [2,7,11,15], target = 9",
+            "output": "[0,1]"
+          }
+        ],
+        "functionSignature": "function twoSum(nums, target) {"
+      },
+      {
+        "title": "Subarray with GCD of 1",
+        "description": "Given an array of integers, find the length of the longest subarray with a GCD of 1.",
+        "difficulty": "medium",
+        "testCases": [
+          {
+            "input": "args=[2, 4, 6, 8, 10]",
+            "output": "5"
+          },
+          {
+            "input": "args=[3, 6, 9, 12, 15]",
+            "output": "1"
+          },
+          {
+            "input": "args=[1, 2, 3, 4, 5]",
+            "output": "5"
+          }
+        ],
+        "constraints": [
+          "The input array consists of integers in the range [1, 10^9].",
+          "The length of the input array is in the range [1, 10^5]."
+        ],
+        "functionSignature": "function longestSubarray(nums) {"
+      }
+    ],
+    "currentQuestionIndex": 0,
+    "question": {
+      "title": "Minimum Window Substring",
+      "description": "Given two strings `s` and `t`, find the minimum window in `s` that contains all characters of `t`. If no such window exists, return an empty string.",
+      "difficulty": "medium",
+      "testCases": [
+        {
+          "input": "{\"s\": \"ADOBECODEBANC\", \"t\": \"ABC\"}",
+          "output": "\"CAB\""
+        },
+        {
+          "input": "{\"s\": \"a\", \"t\": \"a\"}",
+          "output": "\"a\""
+        },
+        {
+          "input": "{\"s\": \"a\", \"t\": \"aa\"}",
+          "output": "null"
+        }
+      ],
+      "constraints": [
+        "The characters in `t` can only appear in `s` in the same order (i.e., it is a subsequence of `s`).",
+        "The window must start from the beginning of `s`.",
+        "The window must contain at least one character of `t`."
+      ],
+      "functionSignature": "function minWindow(s, t) {"
+    },
+    "scores": [],
+    "status": "active",
+    "duration": 1800,
+    "createdAt": "2026-02-09T22:20:21.478Z"
+  },
+  "c5fc1c40-4689-4253-939d-54d19779e615": {
+    "id": "c5fc1c40-4689-4253-939d-54d19779e615",
+    "startTime": "2026-02-09T22:22:28.963Z",
+    "questions": [
+      {
+        "title": "Minimum Window Substring",
+        "description": "Given two strings, `s` and `t`, find the minimum window in `s` that contains all characters of `t`. If no such window exists, return an empty string.",
+        "difficulty": "medium",
+        "testCases": [
+          {
+            "input": "{\"s\": \"ADOBECODEBANC\", \"t\": \"ABC\"}",
+            "output": "BANC"
+          },
+          {
+            "input": "{\"s\": \"a\", \"t\": \"a\"}",
+            "output": "a"
+          },
+          {
+            "input": "{\"s\": \"bba\", \"t\": \"ab\"}",
+            "output": "ba"
+          }
+        ],
+        "constraints": [
+          "The string `t` contains only lowercase English letters.",
+          "The string `s` contains only lowercase English letters and has a length between 1 and 1e6.",
+          "The string `t` has a length between 1 and 20."
+        ],
+        "functionSignature": "function minWindow(s, t) {"
+      },
+      {
+        "title": "Sliding Window Maximum",
+        "description": "Given an array of integers `arr` and an integer `k`, find the maximum element in each window of size `k` as the window moves through the array from left to right. If the window size is larger than the array size, return an empty array.",
+        "difficulty": "medium",
+        "testCases": [
+          {
+            "input": "{\"arr\": [1, 2, 3, 4, 5], \"k\": 2}",
+            "output": "[3, 4]"
+          },
+          {
+            "input": "{\"arr\": [1, 2, 3, 4, 5], \"k\": 5}",
+            "output": "[5]"
+          },
+          {
+            "input": "{\"arr\": [1, 2, 3, 4, 5], \"k\": 1}",
+            "output": "[1, 2, 3, 4, 5]"
+          },
+          {
+            "input": "{\"arr\": [1, 2, 3, 4, 5], \"k\": 6}",
+            "output": "[]"
+          }
+        ],
+        "constraints": [
+          "The array `arr` will contain at least one element.",
+          "The integer `k` will be greater than or equal to 1.",
+          "The array `arr` will not contain any duplicate elements."
+        ],
+        "functionSignature": "function slidingWindowMaximum(arr, k) {"
+      },
+      {
+        "title": "Maximum Subarray Sum with Constraints",
+        "description": "Given an array of integers and a maximum sum constraint, find the maximum sum of a subarray that does not exceed the given constraint.",
+        "difficulty": "medium",
+        "testCases": [
+          {
+            "input": "args = [1, 2, 3, 4, 5], constraint = 7",
+            "output": "9"
+          },
+          {
+            "input": "args = [10, 20, 30, 40, 50], constraint = 60",
+            "output": "60"
+          }
+        ],
+        "constraints": [
+          "The array contains only non-negative integers.",
+          "The maximum sum constraint is a positive integer."
+        ],
+        "functionSignature": "function solve(nums, constraint) {"
+      }
+    ],
+    "currentQuestionIndex": 0,
+    "question": {
+      "title": "Minimum Window Substring",
+      "description": "Given two strings, `s` and `t`, find the minimum window in `s` that contains all characters of `t`. If no such window exists, return an empty string.",
+      "difficulty": "medium",
+      "testCases": [
+        {
+          "input": "{\"s\": \"ADOBECODEBANC\", \"t\": \"ABC\"}",
+          "output": "BANC"
+        },
+        {
+          "input": "{\"s\": \"a\", \"t\": \"a\"}",
+          "output": "a"
+        },
+        {
+          "input": "{\"s\": \"bba\", \"t\": \"ab\"}",
+          "output": "ba"
+        }
+      ],
+      "constraints": [
+        "The string `t` contains only lowercase English letters.",
+        "The string `s` contains only lowercase English letters and has a length between 1 and 1e6.",
+        "The string `t` has a length between 1 and 20."
+      ],
+      "functionSignature": "function minWindow(s, t) {"
+    },
+    "scores": [],
+    "status": "active",
+    "duration": 1800,
+    "createdAt": "2026-02-09T22:22:28.963Z"
   }
 }
