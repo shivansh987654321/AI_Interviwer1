@@ -1,47 +1,116 @@
-🚀 AI Interviewer
+# 🚀 AI Interviewer
 
-An AI-powered mock interview platform that conducts technical interviews, evaluates code submissions, and provides structured feedback in real time.
+AI-powered mock interview platform that simulates real technical interviews using AI-based question generation and automated code evaluation.
 
-Built to simulate real interview environments using AI-based question generation and code evaluation.
+---
 
-🔥 Features
+## 🔥 Features
 
-🎤 AI-generated technical interview questions
+- 🎤 AI-generated technical interview questions
+- 💻 Code submission and automated evaluation
+- 📊 Structured feedback and scoring
+- 🔄 Real-time interaction
+- 🧠 Intelligent response analysis
+- 📁 Session management
 
-💻 Code submission and automated evaluation
+---
 
-📊 Structured feedback and scoring
+## 🛠 Tech Stack
 
-🔄 Real-time interaction
+### Frontend
+- Next.js
+- React
+- TypeScript
 
-🧠 Intelligent response analysis
+### Backend
+- Node.js
+- Express.js
+- TypeScript
 
-📁 Session management
+### AI Integration
+- OpenAI API / Gemini API
 
-🛠 Tech Stack
+---
 
-Frontend
+## 📸 Screenshots
 
-Next.js
+Create a folder named `screenshots` and place images inside it.
 
-React
+## ⚙️ Installation & Setup
 
-TypeScript
+### 1️⃣ Clone the Repository
 
-Backend
+```bash
+git clone https://github.com/shivansh987654321/AI_Interviwer1.git
+cd AI_Interviwer1
+```
 
-Node.js
+---
 
-Express.js
+### 2️⃣ Backend Setup
 
-TypeScript
+```bash
+cd backend
+npm install
+```
 
-AI Integration
+Create a `.env` file inside backend folder:
 
-OpenAI / Gemini API
+```
+OPENAI_API_KEY=your_api_key_here
+```
 
-Other Tools
+Run backend:
 
-WebSockets
+```bash
+npm run dev
+```
 
-REST APIs
+---
+
+### 3️⃣ Frontend Setup
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend runs at:
+
+```
+http://localhost:3000
+```
+
+---
+
+## 🧩 Project Structure
+
+```
+AI_Interviwer1/
+│
+├── frontend/        # Next.js UI
+├── backend/         # Express API & AI logic
+├── screenshots/     # Project screenshots
+└── README.md
+```
+
+---
+
+## 🚀 Future Improvements
+
+- Add authentication (JWT)
+- Add database storage (MongoDB / PostgreSQL)
+- Deploy using Docker
+- Add interview history dashboard
+- Improve evaluation scoring logic
+
+---
+
+## 👨‍💻 Author
+
+Shivansh Agrawal  
+B.Tech CSE | AI & Full Stack Enthusiast  
+
+LinkedIn:  
+https://www.linkedin.com/in/shivansh-agrawal-123456789/
