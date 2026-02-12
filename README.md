@@ -1,57 +1,47 @@
-# AI Interview Platform
+🚀 AI Interviewer
 
-A comprehensive AI-powered interview platform that conducts automated interviews using GPT-4, evaluates candidate responses with strict numeric scoring, and provides detailed feedback reports.
+An AI-powered mock interview platform that conducts technical interviews, evaluates code submissions, and provides structured feedback in real time.
 
-## Overview
+Built to simulate real interview environments using AI-based question generation and code evaluation.
 
-This platform enables organizations to conduct automated technical, behavioral, and system design interviews. The system uses AI to generate questions, evaluate answers, and provide comprehensive scoring and feedback.
+🔥 Features
 
-## Features
+🎤 AI-generated technical interview questions
 
-- **Multiple Interview Types**: Technical, Behavioral, System Design, and Mixed interviews
-- **AI-Powered Question Generation**: Dynamic question generation using GPT-4
-- **Real-time Evaluation**: Strict numeric scoring (0-100) across multiple metrics
-- **Voice & Text Input**: Support for both voice and text-based answers
-- **Mandatory Camera Feed**: Real-time video monitoring during interviews
-- **Detailed Reports**: Comprehensive scoring breakdowns, strengths, weaknesses, and recommendations
-- **WebSocket Support**: Real-time communication between frontend and backend
+💻 Code submission and automated evaluation
 
-## Tech Stack
+📊 Structured feedback and scoring
 
-### Backend
-- Express.js with TypeScript
-- Socket.IO for real-time communication
-- OpenAI GPT-4 for AI capabilities
-- RESTful API architecture
+🔄 Real-time interaction
 
-### Frontend
-- Next.js 14 with TypeScript
-- React 18
-- Socket.IO Client
-- Web Speech API for voice input
+🧠 Intelligent response analysis
 
-## Project Structure
+📁 Session management
 
-```
-ai-interview-platform/
-├── backend/          # Express + TypeScript backend
-├── frontend/         # Next.js frontend
-├── README.md         # This file
-├── SETUP.md          # Setup instructions
-├── ARCHITECTURE.md   # System architecture
-└── PROJECT_SUMMARY.md # Feature summary
-```
+🛠 Tech Stack
 
-## Quick Start
+Frontend
 
-See [SETUP.md](./SETUP.md) for detailed setup instructions.
+Next.js
 
-## Documentation
+React
 
-- [SETUP.md](./SETUP.md) - Installation and setup guide
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture and design
-- [PROJECT_SUMMARY.md](./PROJECT_SUMMARY.md) - Feature overview and capabilities
+TypeScript
 
-## License
+Backend
 
-ISC
+Node.js
+
+Express.js
+
+TypeScript
+
+AI Integration
+
+OpenAI / Gemini API
+
+Other Tools
+
+WebSockets
+
+REST APIs
