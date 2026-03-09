@@ -2,14 +2,15 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
-import geminiService from '../services/gemini.service';
+import aiService from '../services/ai.service';
 // We use 'as any' to avoid strict type issues during quick development
-import { Difficulty, EvaluationResult } from '../types/interview.types';
+import { Difficulty, DSAQuestion, EvaluationResult } from '../types/interview.types';
 
 const router = Router();
 const DB_FILE = path.join(__dirname, '../../sessions.json');
 
 // --- DATABASE HELPERS ---
+// WARNING: File-based storage is not safe for concurrent requests. Use a proper database in production.
 const getSessions = (): Record<string, any> => {
   try {
     if (!fs.existsSync(DB_FILE)) { fs.writeFileSync(DB_FILE, '{}'); return {}; }
@@ -46,9 +47,9 @@ router.post('/create', async (req, res) => {
     // FIX: Generate 3 questions matching the SELECTED difficulty
     // Previously, this was hardcoded to 'easy', 'medium', 'hard' regardless of choice.
     const [q1, q2, q3] = await Promise.all([
-      geminiService.generateDSAQuestion(diffLevel as any),
-      geminiService.generateDSAQuestion(diffLevel as any),
-      geminiService.generateDSAQuestion(diffLevel as any)
+      aiService.generateDSAQuestion(diffLevel as Difficulty),
+      aiService.generateDSAQuestion(diffLevel as Difficulty),
+      aiService.generateDSAQuestion(diffLevel as Difficulty)
     ]);
 
     const session = {
@@ -77,13 +78,18 @@ router.post('/create', async (req, res) => {
 router.post('/submit', async (req, res) => {
   try {
     const { sessionId, code, language } = req.body;
+
+    if (!sessionId || !code || !language) {
+      return res.status(400).json({ error: 'Missing required fields: sessionId, code, language' });
+    }
+
     const sessions = getSessions();
     const session = sessions[sessionId];
 
     if (!session) return res.status(404).json({ error: 'Session expired' });
 
     // Evaluate Code
-    const result: EvaluationResult = await geminiService.evaluateCode(session.question, code, language);
+    const result: EvaluationResult = await aiService.evaluateCode(session.question as DSAQuestion, code, language);
     
     session.scores.push({ 
       score: result.score,

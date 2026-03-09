@@ -30,8 +30,8 @@ The AI Interview Platform is a full-stack application consisting of a Next.js fr
          │ API Calls
          │
 ┌────────▼────────┐
-│   OpenAI GPT-4  │
-│   (External)    │
+│  Groq / LLaMA   │
+│   3.1 (External)│
 └─────────────────┘
 ```
 
@@ -46,9 +46,8 @@ backend/
 │   ├── routes/             # API route handlers
 │   │   └── interview.routes.ts
 │   ├── services/           # Business logic
-│   │   ├── openai.service.ts
+│   │   ├── ai.service.ts
 │   │   ├── question.service.ts
-│   │   ├── evaluation.service.ts
 │   │   └── report.service.ts
 │   ├── sockets/            # WebSocket handlers
 │   │   └── interview.socket.ts
@@ -71,23 +70,21 @@ backend/
 #### 3. Routes (`routes/interview.routes.ts`)
 - `POST /api/interview/create` - Create new interview session
 - `GET /api/interview/:sessionId` - Get session details
-- `POST /api/interview/start/:sessionId` - Start interview
-- `POST /api/interview/submit-answer` - Submit answer
+- `POST /api/interview/submit` - Submit code for evaluation
 - `POST /api/interview/complete/:sessionId` - Complete interview
-- `GET /api/interview/report/:sessionId` - Get report
 
 #### 4. Services
 
-**OpenAI Service** (`services/openai.service.ts`)
-- Question generation using GPT-4
-- Answer evaluation with numeric scoring
-- Feedback generation
-- Report generation
+**AI Service** (`services/ai.service.ts`)
+- Question generation using Groq / LLaMA 3.1
+- Code evaluation with numeric scoring
+- Verbal response generation
+- Final feedback and report generation
+- Interview feedback (strengths, weaknesses, recommendations)
 
 **Question Service** (`services/question.service.ts`)
-- Question bank management
-- Question filtering by type
-- Dynamic question generation
+- Dynamic question generation via AI service
+- Difficulty-based question creation
 
 **Evaluation Service** (`services/evaluation.service.ts`)
 - Answer evaluation orchestration
@@ -215,7 +212,7 @@ Final Score = min(Overall Score, maxScore)
 - **Express.js**: Lightweight, flexible web framework
 - **TypeScript**: Type safety and better developer experience
 - **Socket.IO**: Real-time bidirectional communication
-- **OpenAI SDK**: GPT-4 integration
+- **Groq SDK**: LLaMA 3.1 integration via Groq API
 
 ### Frontend
 - **Next.js**: React framework with SSR/SSG capabilities

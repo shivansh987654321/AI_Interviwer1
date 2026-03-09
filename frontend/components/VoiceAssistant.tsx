@@ -146,7 +146,10 @@ export default function VoiceAssistant({
     });
 
     return () => {
-        // cleanup logic
+        if (newSocket) {
+            newSocket.removeAllListeners();
+            newSocket.disconnect();
+        }
     };
   }, [sessionId, apiEndpoint]); 
 
@@ -392,7 +395,7 @@ export default function VoiceAssistant({
         
         {/* Loading Spinner for Report */}
         {isEnding && !reportData && (
-            <div className="processing-badge">Genererating Report...</div>
+            <div className="processing-badge">Generating Report...</div>
         )}
 
         <div className="status-label" style={{ color: getStatusColor() }}>{aiState}</div>

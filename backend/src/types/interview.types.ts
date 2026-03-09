@@ -15,20 +15,10 @@ export enum Difficulty {
 export interface DSAQuestion {
   title: string;
   description: string;
-  inputFormat: string;
-  outputFormat: string;
-  constraints: string;
-  example: {
-    input: string;
-    output: string;
-    explanation?: string;
-  };
-  starterCode: string;
-
-  // Metadata
-  generationId?: string;
-  generatedBy?: string;
-  generatedAt?: string;
+  difficulty: string;
+  constraints: string[];
+  testCases: { input: string; output: string }[];
+  functionSignature: string;
 }
 
 /* =========================

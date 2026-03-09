@@ -7,28 +7,22 @@ A complete full-stack application for conducting AI-powered interviews with auto
 ## Core Features
 
 ### 1. Interview Types
-- **Technical**: Coding and theoretical questions
-- **Behavioral**: Situational and experience-based questions
-- **System Design**: Architecture and design questions
-- **Mixed**: Combination of all types
+- **Technical**: DSA coding questions and verbal theory questions
+- **Multi-difficulty**: Easy (15 min), Medium (30 min), Hard (45 min)
 
 ### 2. AI-Powered Question Generation
-- Dynamic question generation using GPT-4
-- Question bank with filtering by type and difficulty
+- Dynamic DSA question generation using Groq / LLaMA 3.1
+- Difficulty-based question selection (easy, medium, hard)
 - Customizable question parameters
-- Category-based question selection
 
 ### 3. Answer Evaluation System
-- **Strict Numeric Scoring**: 0-100 scale for all metrics
+- **Strict Numeric Scoring**: 0-100 scale
 - **Multi-Metric Evaluation**:
-  - Correctness (30% weight)
-  - Completeness (20% weight)
-  - Clarity (15% weight)
-  - Technical Accuracy (25% weight)
-  - Communication (10% weight)
-- AI-powered evaluation using GPT-4
-- Weighted average calculation
-- Score validation and normalization
+  - Communication (0-30)
+  - Technical (0-40)
+  - Problem Solving (0-30)
+- AI-powered code evaluation using Groq / LLaMA 3.1
+- Score validation and verdict assignment
 
 ### 4. Input Methods
 - **Text Input**: Traditional text-based answers
@@ -63,7 +57,7 @@ A complete full-stack application for conducting AI-powered interviews with auto
 - RESTful API with Express.js
 - TypeScript for type safety
 - Socket.IO for real-time communication
-- OpenAI GPT-4 integration
+- Groq / LLaMA 3.1 AI integration
 - Modular service architecture
 - Error handling and validation
 
@@ -89,33 +83,26 @@ A complete full-stack application for conducting AI-powered interviews with auto
 ## Scoring Logic
 
 ### Evaluation Process
-1. Answer submitted (text/voice)
-2. OpenAI evaluates answer
-3. Numeric scores assigned (0-100) for each metric
-4. Weighted average calculated
-5. Score normalized to maxScore
-6. Feedback generated
-7. Results stored and returned
+1. Code submitted
+2. Groq / LLaMA 3.1 evaluates code
+3. Numeric score assigned (0-100)
+4. Verdict assigned (Accepted / Wrong Answer / etc.)
+5. Feedback generated
+6. Results stored and returned
 
 ### Score Calculation
 ```
-weightedSum = 
-  correctness × 0.3 +
-  completeness × 0.2 +
-  clarity × 0.15 +
-  technicalAccuracy × 0.25 +
-  communication × 0.1
-
-finalScore = min(weightedSum, maxScore)
+score = communication (0-30) + technical (0-40) + problem_solving (0-30)
+total = 100
 ```
 
 ## Integration Points
 
-### OpenAI GPT-4
-- Question generation
-- Answer evaluation
-- Feedback generation
-- Report analysis
+### Groq / LLaMA 3.1
+- DSA question generation
+- Code evaluation
+- Verbal response generation
+- Report and feedback analysis
 
 ### Web Speech API
 - Voice input recognition
@@ -165,11 +152,9 @@ ai-interview-platform/
 - ✅ Scoring logic framework
 
 ### TODO (Implementation Required)
-- OpenAI API key configuration
-- Database integration
+- Database integration (connect MongoDB for report persistence)
 - Authentication system
 - Speech-to-text full implementation
-- Text-to-speech for AI responses
 - Question bank expansion
 - Report persistence
 - Error handling enhancements
@@ -178,19 +163,20 @@ ai-interview-platform/
 
 ## Usage
 
-1. Configure OpenAI API key in backend `.env`
-2. Start backend server (`npm run dev` in backend/)
-3. Start frontend server (`npm run dev` in frontend/)
-4. Open browser to `http://localhost:3000`
-5. Grant camera permissions
-6. Select interview type
-7. Complete interview
-8. View detailed report
+1. Configure `GROQ_API_KEY` in backend `.env` (required)
+2. Optionally configure `MONGODB_URI` in backend `.env` for database persistence
+3. Start backend server (`npm run dev` in backend/)
+4. Start frontend server (`npm run dev` in frontend/)
+5. Open browser to `http://localhost:3000`
+6. Grant camera permissions
+7. Select interview difficulty
+8. Complete interview
+9. View detailed report
 
 ## Key Highlights
 
 - **Strict Scoring**: Numeric 0-100 scoring ensures consistent evaluation
-- **AI-Powered**: GPT-4 integration for intelligent question generation and evaluation
+- **AI-Powered**: Groq / LLaMA 3.1 integration for intelligent question generation and evaluation
 - **Real-time**: WebSocket communication for live updates
 - **Comprehensive**: Detailed reports with actionable insights
 - **Flexible Input**: Support for both voice and text answers

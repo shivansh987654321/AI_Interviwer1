@@ -1,5 +1,5 @@
 import { InterviewSession, InterviewReport } from '../types/interview.types';
-import geminiService from './gemini.service'; 
+import aiService from './ai.service'; 
 
 class ReportService {
   async generateReport(session: InterviewSession): Promise<InterviewReport> {
@@ -26,8 +26,8 @@ class ReportService {
     const totalAchievedScore = scores.reduce((sum, s) => sum + s.score, 0);
     const percentage = totalMaxScore > 0 ? Math.round((totalAchievedScore / totalMaxScore) * 100) : 0;
 
-    // 2. Generate AI Feedback using Gemini
-    const feedback = await geminiService.generateInterviewFeedback(scores);
+    // 2. Generate AI Feedback using AI service
+    const feedback = await aiService.generateInterviewFeedback(scores);
 
     const report: InterviewReport = {
       sessionId: session.id,

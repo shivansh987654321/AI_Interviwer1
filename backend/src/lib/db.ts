@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 const MONGODB_URI = process.env.MONGODB_URI;
 
 if (!MONGODB_URI) {
-  throw new Error('⚠️ Please define the MONGODB_URI environment variable inside .env');
+  console.warn('⚠️ MONGODB_URI is not set. Database features will be unavailable. File-based session storage will be used instead.');
 }
 
 interface MongooseCache {
@@ -20,6 +20,10 @@ if (!cached) {
 }
 
 async function connectToDatabase() {
+  if (!MONGODB_URI) {
+    throw new Error('MONGODB_URI is not set. Cannot connect to MongoDB.');
+  }
+
   if (cached.conn) {
     return cached.conn;
   }

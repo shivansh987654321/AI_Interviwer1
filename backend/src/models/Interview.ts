@@ -2,10 +2,13 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IInterview extends Document {
   userId: string;          // From Clerk (we'll get this later)
+  sessionId: string;
   date: Date;
   score: number;
   feedback: string;
   verbatim: { role: string; content: string }[]; // Full chat history
+  improvements: string[];
+  verdict: string;
 }
 const InterviewSchema: Schema = new Schema({
   userId: { type: String, required: true, index: true },

@@ -1,18 +1,10 @@
 import Groq from 'groq-sdk';
 import dotenv from 'dotenv';
+import { DSAQuestion, EvaluationResult } from '../types/interview.types';
 
 dotenv.config();
 
-export interface DSAQuestion {
-  title: string;
-  description: string;
-  difficulty: string;
-  constraints: string[];
-  testCases: { input: string; output: string }[];
-  functionSignature: string;
-}
-
-class GeminiService {
+class AIService {
   private groq: Groq;
 
   constructor() {
@@ -124,9 +116,64 @@ class GeminiService {
   }
 
   // =================================================================
+  // PHASE 5: CODE EVALUATION
+  // =================================================================
+  async evaluateCode(question: DSAQuestion, code: string, language: string): Promise<EvaluationResult> {
+    const prompt = `
+      You are a senior software engineer evaluating a candidate's code submission.
+
+      Problem Title: ${question.title}
+      Problem Description: ${question.description}
+      Language: ${language}
+      Submitted Code:
+      \`\`\`${language}
+      ${code}
+      \`\`\`
+
+      Evaluate the code and return STRICT JSON only:
+      {
+        "score": number (0-100),
+        "verdict": "Accepted" | "Wrong Answer" | "Compilation Error" | "Time Limit Exceeded" | "Runtime Error",
+        "feedback": "One-paragraph explanation of the evaluation",
+        "improvements": ["Improvement suggestion 1", "Improvement suggestion 2"]
+      }
+    `;
+
+    try {
+      const completion = await this.groq.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'llama-3.1-8b-instant',
+        temperature: 0.2,
+      });
+
+      const rawText = completion.choices[0]?.message?.content || '{}';
+      const result = this.cleanAndParse(rawText);
+
+      if (!result) throw new Error("Parsed JSON was null");
+
+      return {
+        score: typeof result.score === 'number' ? result.score : 0,
+        verdict: result.verdict || 'Wrong Answer',
+        feedback: result.feedback || 'Could not evaluate the submission.',
+        improvements: result.improvements || []
+      };
+
+    } catch (err) {
+      console.error('Code Evaluation Error:', err);
+      // FALLBACK
+      return {
+        score: 0,
+        verdict: 'Wrong Answer',
+        feedback: 'Could not evaluate the submission due to an AI error. Please try again.',
+        improvements: ['Ensure your solution handles all edge cases.']
+      };
+    }
+  }
+
+  // =================================================================
   // PHASE 1-3: VERBAL CONVERSATION
   // =================================================================
-  async generateVerbalResponse(history: any[], userMessage: string): Promise<{ text: string; action?: string }> {
+  async generateVerbalResponse(history: { role: string; content: string }[], userMessage: string): Promise<{ text: string; action?: string }> {
     const prompt = `
       ROLE: FAANG Interviewer.
       TASK: Verbal interview.
@@ -167,7 +214,7 @@ class GeminiService {
   // =================================================================
   // PHASE 6: FINAL EVALUATION (Report Card)
   // =================================================================
-  async generateFinalFeedback(chatHistory: any[], codingResult: any): Promise<any> {
+  async generateFinalFeedback(chatHistory: { role: string; content: string }[], codingResult: any): Promise<any> {
     const prompt = `
       Analyze this interview session and provide a JSON report card.
       
@@ -179,8 +226,8 @@ class GeminiService {
         "score": number (0-100),
         "breakdown": {
             "communication": number (0-30),
-            "technical": number (0-30),
-            "problem_solving": number (0-40)
+            "technical": number (0-40),
+            "problem_solving": number (0-30)
         },
         "feedback_summary": "1-2 sentences overview",
         "key_strengths": ["point 1", "point 2"],
@@ -221,6 +268,52 @@ class GeminiService {
       };
     }
   }
+
+  // =================================================================
+  // REPORT SERVICE: INTERVIEW FEEDBACK
+  // =================================================================
+  async generateInterviewFeedback(scores: { score: number; verdict: string; feedback?: string }[]): Promise<{ strengths: string[]; weaknesses: string[]; recommendations: string[] }> {
+    const prompt = `
+      Analyze the following interview scores and provide structured feedback.
+
+      Scores: ${JSON.stringify(scores)}
+
+      Return STRICT JSON only:
+      {
+        "strengths": ["Strength 1", "Strength 2"],
+        "weaknesses": ["Weakness 1", "Weakness 2"],
+        "recommendations": ["Recommendation 1", "Recommendation 2"]
+      }
+    `;
+
+    try {
+      const completion = await this.groq.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'llama-3.1-8b-instant',
+        temperature: 0.3,
+      });
+
+      const rawText = completion.choices[0]?.message?.content || '{}';
+      const result = this.cleanAndParse(rawText);
+
+      if (!result) throw new Error("Parsed JSON was null");
+
+      return {
+        strengths: result.strengths || [],
+        weaknesses: result.weaknesses || [],
+        recommendations: result.recommendations || []
+      };
+
+    } catch (err) {
+      console.error('Interview Feedback Error:', err);
+      // FALLBACK
+      return {
+        strengths: ["Attempted all questions"],
+        weaknesses: ["Could not generate detailed analysis"],
+        recommendations: ["Review data structures and algorithms", "Practice more coding problems"]
+      };
+    }
+  }
 }
 
-export default new GeminiService();
+export default new AIService();

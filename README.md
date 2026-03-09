@@ -28,7 +28,7 @@ AI-powered mock interview platform that simulates real technical interviews usin
 - TypeScript
 
 ### AI Integration
-- OpenAI API / Gemini API
+- Groq API (LLaMA 3.1)
 
 ---
 
@@ -57,7 +57,8 @@ npm install
 Create a `.env` file inside backend folder:
 
 ```
-OPENAI_API_KEY=your_api_key_here
+GROQ_API_KEY=your_groq_api_key_here
+MONGODB_URI=your_mongodb_uri_here  # Optional: required only for database persistence
 ```
 
 Run backend:
