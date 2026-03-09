@@ -318,4 +318,13 @@ class OpenAIService {
   }
 }
 
-export default new OpenAIService();
+// When MOCK_AI=true in .env, return the mock service so no OpenAI credits are spent.
+// Useful for local development and CI testing.
+import mockAIService from './mock.ai.service';
+
+const isMockMode = process.env.MOCK_AI === 'true';
+if (isMockMode) {
+  console.log('🟡 MOCK_AI mode enabled — OpenAI calls are disabled.');
+}
+
+export default isMockMode ? mockAIService : new OpenAIService();

@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
 import aiService from '../services/ai.service';
+import connectToDatabase from '../lib/db';
+import Interview from '../models/Interview';
 // We use 'as any' to avoid strict type issues during quick development
 import { Difficulty, DSAQuestion, EvaluationResult } from '../types/interview.types';
 
@@ -146,6 +148,26 @@ router.post('/complete/:sessionId', (req, res) => {
       saveSessionToDb(sessions[sessionId]);
     }
     res.json({ message: 'Interview completed' });
+});
+
+// =================================================================
+// 5. HISTORY — returns all past interviews for a given userId
+// =================================================================
+router.get('/history/:userId', async (req, res) => {
+  const { userId } = req.params;
+  if (!userId) return res.status(400).json({ error: 'userId is required' });
+
+  try {
+    await connectToDatabase();
+    const interviews = await Interview.find({ userId })
+      .sort({ date: -1 })   // newest first
+      .select('sessionId date score feedback verdict')
+      .lean();
+    res.json({ interviews });
+  } catch (err) {
+    console.error('History fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch history' });
+  }
 });
 
 export default router;

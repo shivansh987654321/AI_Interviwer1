@@ -1,7 +1,8 @@
-import { useUser } from "@clerk/nextjs";
+import { useUser, SignOutButton } from "@clerk/nextjs";
 import { useRouter } from 'next/router';
 import { useState } from 'react';
 import axios from 'axios';
+import Link from 'next/link';
 
 // Define the Difficulty type properly
 type Difficulty = 'easy' | 'medium' | 'hard';
@@ -30,8 +31,6 @@ export default function Home() {
       
       const response = await axios.post<CreateInterviewResponse>(`${apiUrl}/api/interview/create`, {
         difficulty: selectedDifficulty,
-        // Optional: We can pass the userId here if we want to associate the session immediately,
-        // but for now, we are saving it at the end via the socket.
         userId: user ? user.id : undefined 
       });
 
@@ -51,12 +50,33 @@ export default function Home() {
 
   return (
     <div className="page-wrapper">
+      {/* ── Top Nav ── */}
+      <nav className="navbar">
+        <span className="nav-brand">AI Interviewer</span>
+        <div className="nav-links">
+          {user ? (
+            <>
+              <Link href="/history" className="nav-link">📋 History</Link>
+              <span className="nav-user">👋 {user.firstName || user.emailAddresses[0]?.emailAddress}</span>
+              <SignOutButton>
+                <button className="nav-btn">Sign Out</button>
+              </SignOutButton>
+            </>
+          ) : (
+            <>
+              <Link href="/sign-in" className="nav-btn">Sign In</Link>
+              <Link href="/sign-up" className="nav-btn nav-btn-primary">Sign Up</Link>
+            </>
+          )}
+        </div>
+      </nav>
+
       <div className="container">
         <h1>DSA Interview Platform</h1>
         <p>Select a difficulty level to generate your question.</p>
 
         {/* Show a welcome message if logged in */}
-        {user && <p className="welcome-text">Welcome back, {user.firstName}!</p>}
+        {user && <p className="welcome-text">Welcome back, {user.firstName}! 🎉</p>}
 
         <div className="difficulty-selector">
           {(['easy', 'medium', 'hard'] as Difficulty[]).map((level) => (
@@ -82,17 +102,81 @@ export default function Home() {
             'Start Interview 🚀'
           )}
         </button>
+
+        {user && (
+          <p className="history-hint">
+            <Link href="/history">View your past interviews →</Link>
+          </p>
+        )}
       </div>
 
       <style jsx>{`
         .page-wrapper {
           min-height: 100vh;
           display: flex;
+          flex-direction: column;
           align-items: center;
-          justify-content: center;
           background: #fafafa;
           font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif;
         }
+        /* ── Navbar ── */
+        .navbar {
+          width: 100%;
+          max-width: 1200px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 1.2rem 2rem;
+        }
+        .nav-brand {
+          font-weight: 700;
+          font-size: 1.1rem;
+          color: #111;
+        }
+        .nav-links {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+        }
+        .nav-link {
+          text-decoration: none;
+          color: #555;
+          font-size: 0.9rem;
+          font-weight: 500;
+          transition: color 0.2s;
+        }
+        .nav-link:hover { color: #0070f3; }
+        .nav-user {
+          font-size: 0.9rem;
+          color: #555;
+        }
+        .nav-btn {
+          padding: 0.45rem 1rem;
+          font-size: 0.9rem;
+          border: 1.5px solid #ddd;
+          background: white;
+          color: #444;
+          border-radius: 8px;
+          cursor: pointer;
+          font-weight: 500;
+          text-decoration: none;
+          transition: all 0.2s;
+        }
+        .nav-btn:hover {
+          border-color: #0070f3;
+          color: #0070f3;
+        }
+        .nav-btn-primary {
+          background: #0070f3;
+          border-color: #0070f3;
+          color: white;
+        }
+        .nav-btn-primary:hover {
+          background: #0060df;
+          border-color: #0060df;
+          color: white;
+        }
+        /* ── Main Card ── */
         .container {
           background: white;
           width: 100%;
@@ -101,6 +185,7 @@ export default function Home() {
           text-align: center;
           border-radius: 16px;
           box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+          margin-top: 2rem;
         }
         h1 {
           font-size: 2rem;
@@ -173,6 +258,18 @@ export default function Home() {
           display: inline-block;
           animation: pulse 1.5s infinite;
         }
+        .history-hint {
+          margin-top: 1.5rem;
+          margin-bottom: 0;
+          font-size: 0.9rem;
+          color: #888;
+        }
+        .history-hint a {
+          color: #0070f3;
+          text-decoration: none;
+          font-weight: 500;
+        }
+        .history-hint a:hover { text-decoration: underline; }
         @keyframes pulse {
           0% { opacity: 0.6; }
           50% { opacity: 1; }
