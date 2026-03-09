@@ -54,11 +54,19 @@ cd backend
 npm install
 ```
 
-Create a `.env` file inside backend folder:
+Create a `.env` file from the provided example:
+
+```bash
+cp .env.example .env
+```
+
+Then open `.env` and set your values — at minimum you must set `OPENAI_API_KEY`:
 
 ```
 OPENAI_API_KEY=your_openai_api_key_here
-MONGODB_URI=your_mongodb_uri_here  # Optional: required only for database persistence
+MONGODB_URI=your_mongodb_uri_here  # Optional: database persistence
+PORT=5001
+FRONTEND_URL=http://localhost:3000
 ```
 
 Run backend:
