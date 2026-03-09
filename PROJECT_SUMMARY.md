@@ -11,7 +11,7 @@ A complete full-stack application for conducting AI-powered interviews with auto
 - **Multi-difficulty**: Easy (15 min), Medium (30 min), Hard (45 min)
 
 ### 2. AI-Powered Question Generation
-- Dynamic DSA question generation using Groq / LLaMA 3.1
+- Dynamic DSA question generation using OpenAI GPT-4o
 - Difficulty-based question selection (easy, medium, hard)
 - Customizable question parameters
 
@@ -21,7 +21,7 @@ A complete full-stack application for conducting AI-powered interviews with auto
   - Communication (0-30)
   - Technical (0-40)
   - Problem Solving (0-30)
-- AI-powered code evaluation using Groq / LLaMA 3.1
+- AI-powered code evaluation using OpenAI GPT-4o
 - Score validation and verdict assignment
 
 ### 4. Input Methods
@@ -57,7 +57,7 @@ A complete full-stack application for conducting AI-powered interviews with auto
 - RESTful API with Express.js
 - TypeScript for type safety
 - Socket.IO for real-time communication
-- Groq / LLaMA 3.1 AI integration
+- OpenAI GPT-4o AI integration
 - Modular service architecture
 - Error handling and validation
 
@@ -84,7 +84,7 @@ A complete full-stack application for conducting AI-powered interviews with auto
 
 ### Evaluation Process
 1. Code submitted
-2. Groq / LLaMA 3.1 evaluates code
+2. OpenAI GPT-4o evaluates code
 3. Numeric score assigned (0-100)
 4. Verdict assigned (Accepted / Wrong Answer / etc.)
 5. Feedback generated
@@ -98,7 +98,7 @@ total = 100
 
 ## Integration Points
 
-### Groq / LLaMA 3.1
+### OpenAI GPT-4o
 - DSA question generation
 - Code evaluation
 - Verbal response generation
@@ -163,7 +163,7 @@ ai-interview-platform/
 
 ## Usage
 
-1. Configure `GROQ_API_KEY` in backend `.env` (required)
+1. Configure `OPENAI_API_KEY` in backend `.env` (required)
 2. Optionally configure `MONGODB_URI` in backend `.env` for database persistence
 3. Start backend server (`npm run dev` in backend/)
 4. Start frontend server (`npm run dev` in frontend/)
@@ -176,7 +176,7 @@ ai-interview-platform/
 ## Key Highlights
 
 - **Strict Scoring**: Numeric 0-100 scoring ensures consistent evaluation
-- **AI-Powered**: Groq / LLaMA 3.1 integration for intelligent question generation and evaluation
+- **AI-Powered**: OpenAI GPT-4o integration for intelligent question generation and evaluation
 - **Real-time**: WebSocket communication for live updates
 - **Comprehensive**: Detailed reports with actionable insights
 - **Flexible Input**: Support for both voice and text answers

@@ -1,18 +1,20 @@
-import Groq from 'groq-sdk';
+// Switched from groq-sdk to openai — all AI calls now go through OpenAI GPT-4o
+import OpenAI from 'openai';
 import dotenv from 'dotenv';
 import { DSAQuestion, EvaluationResult } from '../types/interview.types';
 
 dotenv.config();
 
-class AIService {
-  private groq: Groq;
+// Centralized OpenAI service — single source of truth for all AI interactions
+class OpenAIService {
+  private openai: OpenAI;
 
   constructor() {
-    const apiKey = process.env.GROQ_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      console.error('⚠️ GROQ_API_KEY missing. Please set it in your backend/.env file.');
+      console.error('⚠️ OPENAI_API_KEY missing. Please set it in your backend/.env file.');
     }
-    this.groq = new Groq({ apiKey: apiKey || 'dummy_key' });
+    this.openai = new OpenAI({ apiKey: apiKey || 'dummy_key' });
   }
 
   /**
@@ -81,9 +83,9 @@ class AIService {
     `;
 
     try {
-      const completion = await this.groq.chat.completions.create({
+      const completion = await this.openai.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
-        model: 'llama-3.1-8b-instant',
+        model: 'gpt-4o',
         temperature: 0.6,
       });
 
@@ -102,7 +104,7 @@ class AIService {
       };
 
     } catch (err) {
-      console.error('Groq Gen Error:', err);
+      console.error('OpenAI Gen Error:', err);
       // FALLBACK
       return {
         title: "Two Sum (Fallback)",
@@ -140,9 +142,9 @@ class AIService {
     `;
 
     try {
-      const completion = await this.groq.chat.completions.create({
+      const completion = await this.openai.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
-        model: 'llama-3.1-8b-instant',
+        model: 'gpt-4o',
         temperature: 0.2,
       });
 
@@ -195,9 +197,9 @@ class AIService {
     `;
 
     try {
-      const completion = await this.groq.chat.completions.create({
+      const completion = await this.openai.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
-        model: 'llama-3.1-8b-instant',
+        model: 'gpt-4o',
         temperature: 0.6,
       });
       
@@ -236,9 +238,9 @@ class AIService {
     `;
 
     try {
-      const completion = await this.groq.chat.completions.create({
+      const completion = await this.openai.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
-        model: 'llama-3.1-8b-instant', 
+        model: 'gpt-4o', 
         temperature: 0.2, 
       });
 
@@ -287,9 +289,9 @@ class AIService {
     `;
 
     try {
-      const completion = await this.groq.chat.completions.create({
+      const completion = await this.openai.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
-        model: 'llama-3.1-8b-instant',
+        model: 'gpt-4o',
         temperature: 0.3,
       });
 
@@ -316,4 +318,4 @@ class AIService {
   }
 }
 
-export default new AIService();
+export default new OpenAIService();

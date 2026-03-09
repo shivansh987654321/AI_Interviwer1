@@ -29,9 +29,9 @@ The AI Interview Platform is a full-stack application consisting of a Next.js fr
          │
          │ API Calls
          │
-┌────────▼────────┐
-│  Groq / LLaMA   │
-│   3.1 (External)│
+┌─────────────────┐
+│  OpenAI GPT-4o  │
+│   (External)    │
 └─────────────────┘
 ```
 
@@ -76,7 +76,7 @@ backend/
 #### 4. Services
 
 **AI Service** (`services/ai.service.ts`)
-- Question generation using Groq / LLaMA 3.1
+- Question generation using OpenAI GPT-4o
 - Code evaluation with numeric scoring
 - Verbal response generation
 - Final feedback and report generation
@@ -212,7 +212,7 @@ Final Score = min(Overall Score, maxScore)
 - **Express.js**: Lightweight, flexible web framework
 - **TypeScript**: Type safety and better developer experience
 - **Socket.IO**: Real-time bidirectional communication
-- **Groq SDK**: LLaMA 3.1 integration via Groq API
+- **OpenAI SDK**: GPT-4o integration via OpenAI API
 
 ### Frontend
 - **Next.js**: React framework with SSR/SSG capabilities

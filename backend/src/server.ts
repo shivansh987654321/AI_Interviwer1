@@ -14,7 +14,7 @@ import { initializeInterviewSocket } from './sockets/interview.socket';
 // =================================================================
 console.log("------------------------------------------------");
 console.log("🚀 STARTING SERVER...");
-console.log("🔑 API KEY STATUS:", process.env.GROQ_API_KEY ? "✅ LOADED" : "❌ MISSING (Check .env)");
+console.log("🔑 API KEY STATUS:", process.env.OPENAI_API_KEY ? "✅ LOADED" : "❌ MISSING (Check .env)");
 console.log("------------------------------------------------");
 
 const PORT = Number(process.env.PORT) || 5001;
