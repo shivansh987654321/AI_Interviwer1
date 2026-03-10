@@ -151,7 +151,32 @@ router.post('/complete/:sessionId', (req, res) => {
 });
 
 // =================================================================
-// 5. HISTORY — returns all past interviews for a given userId
+// 5. REPORT — returns a saved interview report from MongoDB
+// =================================================================
+router.get('/report/:sessionId', async (req, res) => {
+  const { sessionId } = req.params;
+  if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
+
+  try {
+    await connectToDatabase();
+    const interview = await Interview.findOne({ sessionId }).lean();
+    if (!interview) return res.status(404).json({ error: 'Report not found' });
+    res.json({
+      score: interview.score,
+      feedback: interview.feedback,
+      verdict: interview.verdict,
+      improvements: interview.improvements || [],
+      date: interview.date,
+      sessionId: interview.sessionId,
+    });
+  } catch (err) {
+    console.error('Report fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch report' });
+  }
+});
+
+// =================================================================
+// 6. HISTORY — returns all past interviews for a given userId
 // =================================================================
 router.get('/history/:userId', async (req, res) => {
   const { userId } = req.params;

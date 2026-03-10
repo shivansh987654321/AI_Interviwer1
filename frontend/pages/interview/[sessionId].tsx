@@ -1,5 +1,6 @@
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
+import { useUser } from '@clerk/nextjs';
 import axios from 'axios';
 import Editor, { OnChange } from '@monaco-editor/react';
 import VoiceAssistant from '../../components/VoiceAssistant';
@@ -19,6 +20,7 @@ const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
 export default function InterviewPage() {
   const router = useRouter();
   const { sessionId } = router.query;
+  const { user } = useUser();
 
   // --- 2. STATE ---
   const [question, setQuestion] = useState<any>(null);
@@ -147,7 +149,7 @@ export default function InterviewPage() {
   return (
     <div className="interview-layout">
       {/* Voice Assistant (Handling the Report Card UI) */}
-      <VoiceAssistant sessionId={sessionId} onCodingStart={() => setIsCodingStarted(true)} />
+      <VoiceAssistant sessionId={sessionId} onCodingStart={() => setIsCodingStarted(true)} userId={user?.id} />
 
       {/* HEADER / NAVIGATION */}
       <header className="nav">
@@ -189,13 +191,15 @@ export default function InterviewPage() {
               <h3>Problem Statement</h3>
               <p className="desc-text">{question?.description}</p>
               
-              <div className="example-box">
-                <h4>Example</h4>
-                <pre>
-<strong>Input:</strong> {JSON.stringify(question?.example?.input, null, 2)}
-<strong>Output:</strong> {JSON.stringify(question?.example?.output)}
-                </pre>
-              </div>
+              {question?.testCases && question.testCases.length > 0 && (
+                <div className="example-box">
+                  <h4>Example</h4>
+                  <pre>
+<strong>Input:</strong> {question.testCases[0].input}
+<strong>Output:</strong> {question.testCases[0].output}
+                  </pre>
+                </div>
+              )}
             </div>
 
             {/* Right Panel: Code Editor */}

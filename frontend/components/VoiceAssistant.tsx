@@ -11,6 +11,7 @@ interface IWindow extends Window {
 interface VoiceAssistantProps {
   sessionId: string;
   onCodingStart: () => void;
+  userId?: string;
   apiEndpoint?: string; 
 }
 
@@ -33,6 +34,7 @@ interface ReportCard {
 export default function VoiceAssistant({ 
   sessionId, 
   onCodingStart,
+  userId,
   apiEndpoint = 'http://localhost:5001'
 }: VoiceAssistantProps) {
   
@@ -318,7 +320,7 @@ export default function VoiceAssistant({
           setAiState('THINKING');
           
           if (socketRef.current?.connected) {
-              socketRef.current.emit('end_interview', { sessionId });
+              socketRef.current.emit('end_interview', { sessionId, userId: userId || 'GUEST_USER' });
           }
       }
   };

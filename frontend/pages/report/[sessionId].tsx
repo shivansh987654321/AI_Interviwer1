@@ -23,10 +23,10 @@ export default function ReportPage() {
   useEffect(() => {
     if (!sessionId) return;
 
-    // ✅ FIXED: Use GET instead of POST to fetch data
+    // ✅ Fetch from the dedicated report endpoint (reads from MongoDB)
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
     
-    axios.get(`${apiUrl}/api/interview/${sessionId}`)
+    axios.get(`${apiUrl}/api/interview/report/${sessionId}`)
       .then(response => {
         setEvaluation(response.data);
         setLoading(false);
