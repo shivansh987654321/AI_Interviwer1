@@ -1,5 +1,5 @@
-import { Difficulty, DSAQuestion } from '../types/interview.types';
-import geminiService from './gemini.service';
+import { Difficulty } from '../types/interview.types';
+import geminiService, { DSAQuestion } from './gemini.service';
 
 class QuestionService {
   /**

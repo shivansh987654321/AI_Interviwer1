@@ -1,23 +1,40 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
+export interface VerbatimEntry {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  createdAt?: Date;
+}
+
 export interface IInterview extends Document {
-  userId: string;          // From Clerk (we'll get this later)
+  userId: string;
+  sessionId: string;
   date: Date;
   score: number;
   feedback: string;
-  verbatim: { role: string; content: string }[]; // Full chat history
+  verbatim: VerbatimEntry[];
+  improvements: string[];
+  verdict?: string;
 }
-const InterviewSchema: Schema = new Schema({
+
+const VerbatimSchema = new Schema<VerbatimEntry>(
+  {
+    role: { type: String, required: true, enum: ['user', 'assistant', 'system'] },
+    content: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
+const InterviewSchema = new Schema<IInterview>({
   userId: { type: String, required: true, index: true },
-  sessionId: { type: String, required: true }, // 🆕 ADD THIS LINE
+  sessionId: { type: String, required: true, index: true },
   date: { type: Date, default: Date.now },
-  score: { type: Number, required: true },
+  score: { type: Number, required: true, min: 0, max: 100 },
   feedback: { type: String, required: true },
-  verbatim: { type: Array, default: [] },
-  // Optional fields for better reports
-  improvements: { type: Array, default: [] },
-  verdict: { type: String }
+  verbatim: { type: [VerbatimSchema], default: [] },
+  improvements: { type: [String], default: [] },
+  verdict: { type: String },
 });
 
-// Check if model exists before creating (prevents overwrite errors)
 export default mongoose.models.Interview || mongoose.model<IInterview>('Interview', InterviewSchema);

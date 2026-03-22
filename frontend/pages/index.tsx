@@ -9,7 +9,15 @@ type Difficulty = 'easy' | 'medium' | 'hard';
 // Define the response type from the backend
 interface CreateInterviewResponse {
   sessionId: string;
-  question: any;
+  question: {
+    title: string;
+    description: string;
+    difficulty: string;
+    constraints?: string[];
+    testCases?: { input: string; output: string }[];
+    functionSignature?: string;
+  };
+  duration: number;
 }
 
 export default function Home() {

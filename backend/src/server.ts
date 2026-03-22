@@ -2,20 +2,24 @@
 // 1. LOAD ENVIRONMENT VARIABLES (MUST BE FIRST)
 // =================================================================
 import dotenv from 'dotenv';
-dotenv.config(); 
+dotenv.config();
 
 import http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import app from './app';
 import { initializeInterviewSocket } from './sockets/interview.socket';
 
+const isProd = process.env.NODE_ENV === 'production';
+
 // =================================================================
-// 2. DEBUG CONFIGURATION
+// 2. STARTUP DIAGNOSTICS (dev-only)
 // =================================================================
-console.log("------------------------------------------------");
-console.log("🚀 STARTING SERVER...");
-console.log("🔑 API KEY STATUS:", process.env.GROQ_API_KEY ? "✅ LOADED" : "❌ MISSING (Check .env)");
-console.log("------------------------------------------------");
+if (!isProd) {
+  console.log('------------------------------------------------');
+  console.log('🚀 STARTING SERVER...');
+  console.log('🔑 API KEY STATUS:', process.env.GROQ_API_KEY ? '✅ LOADED' : '❌ MISSING (Check .env)');
+  console.log('------------------------------------------------');
+}
 
 const PORT = Number(process.env.PORT) || 5001;
 
