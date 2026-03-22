@@ -1,10 +1,35 @@
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
-import Editor, { OnChange } from '@monaco-editor/react';
+import Editor, { OnChange, OnMount } from '@monaco-editor/react';
 import VoiceAssistant from '../../components/VoiceAssistant';
-// 1. IMPORT SOCKET
-import { io, Socket } from 'socket.io-client'; 
+import { io, Socket } from 'socket.io-client';
+
+// --- TYPES ---
+interface TestCase {
+  input: string;
+  output: string;
+}
+
+interface Question {
+  title: string;
+  description: string;
+  difficulty: string;
+  constraints?: string[];
+  testCases?: TestCase[];
+  functionSignature?: string;
+  example?: { input: unknown; output: unknown; explanation?: string };
+}
+
+interface SubmitResponse {
+  score: number;
+  verdict: string;
+  feedback: string;
+  improvements?: string[];
+  nextQuestion?: Question;
+  completed?: boolean;
+  message?: string;
+}
 
 // --- 1. LANGUAGE TEMPLATES ---
 const TEMPLATES: Record<string, string> = {
@@ -21,7 +46,7 @@ export default function InterviewPage() {
   const { sessionId } = router.query;
 
   // --- 2. STATE ---
-  const [question, setQuestion] = useState<any>(null);
+  const [question, setQuestion] = useState<Question | null>(null);
   const [code, setCode] = useState(TEMPLATES.javascript);
   const [language, setLanguage] = useState('javascript');
   const [timeLeft, setTimeLeft] = useState(0);
@@ -31,13 +56,12 @@ export default function InterviewPage() {
   const [routerReady, setRouterReady] = useState(false);
 
   // --- 3. REFS ---
-  const editorRef = useRef<any>(null); 
-  const socketRef = useRef<Socket | null>(null); // 2. SOCKET REF
+  const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+  const socketRef = useRef<Socket | null>(null);
 
   // --- 4. WAIT FOR ROUTER HYDRATION ---
   useEffect(() => {
     if (router.isReady) {
-      console.log('[Router] Ready. SessionId:', router.query.sessionId);
       setRouterReady(true);
     }
   }, [router.isReady]);
@@ -45,10 +69,9 @@ export default function InterviewPage() {
   // --- 5. INITIALIZATION & SOCKET CONNECTION ---
   useEffect(() => {
     if (!sessionId || !routerReady) return;
-    
+
     // A. Load Question Data
-    console.log('[Interview] Loading session:', sessionId);
-    axios.get(`${apiUrl}/api/interview/${sessionId}`)
+    axios.get<{ session: { question: Question; duration: number } }>(`${apiUrl}/api/interview/${sessionId}`)
       .then(res => {
         const session = res.data.session;
         setQuestion(session.question);
@@ -78,7 +101,7 @@ export default function InterviewPage() {
 
   // --- 6. HANDLERS ---
   
-  const handleEditorDidMount = (editor: any) => {
+  const handleEditorDidMount: OnMount = (editor) => {
     editorRef.current = editor;
   };
 
@@ -98,34 +121,30 @@ export default function InterviewPage() {
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      // 1. Submit code to backend for evaluation
-      const res = await axios.post(`${apiUrl}/api/interview/submit`, {
+      const res = await axios.post<SubmitResponse>(`${apiUrl}/api/interview/submit`, {
         sessionId,
         code,
-        language
+        language,
       });
 
-      // 2. SEND SCORE TO VOICE ASSISTANT (Crucial Step!)
-      // This ensures the final Report Card includes your coding performance.
       if (socketRef.current) {
-          console.log("Sending Coding Score to System...", res.data);
-          socketRef.current.emit('submit_code_result', {
-              sessionId,
-              result: res.data // Contains score, verdict, etc.
-          });
+        socketRef.current.emit('submit_code_result', {
+          sessionId,
+          result: res.data,
+        });
       }
 
       if (res.data.nextQuestion) {
-        alert("Success! Moving to next question.");
+        alert('Success! Moving to next question.');
         setQuestion(res.data.nextQuestion);
-        setCode(TEMPLATES[language]); 
+        setCode(TEMPLATES[language]);
       } else {
-        // 3. DO NOT REDIRECT. Prompt for Report Card.
-        // We removed router.push('/') so you can see the report.
-        alert("Coding Round Complete! \n\nPlease click the green 'Finish Interview' button on the AI Assistant to generate your Report Card.");
+        alert(
+          'Coding Round Complete! \n\nPlease click the green \'Finish Interview\' button on the AI Assistant to generate your Report Card.'
+        );
       }
     } catch (err) {
-      alert("Submission Error. Check console for details.");
+      alert('Submission Error. Check console for details.');
       console.error(err);
     } finally {
       setSubmitting(false);

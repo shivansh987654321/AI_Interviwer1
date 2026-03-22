@@ -138,15 +138,24 @@ export default function VoiceAssistant({
     });
 
     newSocket.on('interview_results', (data: ReportCard) => {
-        console.log("📊 Report Received:", data);
         setIsEnding(false);
         setReportData(data); // Show the Modal
         // Stop audio
         window.speechSynthesis.cancel();
     });
 
+    newSocket.on('interview_error', (data: { message: string }) => {
+        setAiState('ERROR');
+        setDebugMsg(data.message ?? 'An error occurred. Please try again.');
+        setIsEnding(false);
+    });
+
     return () => {
-        // cleanup logic
+      const isDev = process.env.NODE_ENV !== 'production';
+      try { newSocket.off(); newSocket.disconnect(); } catch (e) { if (isDev) console.warn('Socket cleanup error:', e); }
+      try { recognitionRef.current?.stop(); recognitionRef.current = null; } catch (e) { if (isDev) console.warn('Recognition cleanup error:', e); }
+      try { window.speechSynthesis.cancel(); } catch (e) { if (isDev) console.warn('Speech synthesis cleanup error:', e); }
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     };
   }, [sessionId, apiEndpoint]); 
 

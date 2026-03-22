@@ -1,145 +1,138 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import fs from 'fs';
-import path from 'path';
 import geminiService from '../services/gemini.service';
-// We use 'as any' to avoid strict type issues during quick development
+import connectToDatabase from '../lib/db';
+import InterviewSessionModel from '../models/InterviewSession';
 import { Difficulty, EvaluationResult } from '../types/interview.types';
 
+const PASSING_SCORE_THRESHOLD = 70;
+
 const router = Router();
-const DB_FILE = path.join(__dirname, '../../sessions.json');
-
-// --- DATABASE HELPERS ---
-const getSessions = (): Record<string, any> => {
-  try {
-    if (!fs.existsSync(DB_FILE)) { fs.writeFileSync(DB_FILE, '{}'); return {}; }
-    return JSON.parse(fs.readFileSync(DB_FILE, 'utf-8') || '{}');
-  } catch (e) { return {}; }
-};
-
-const saveSessionToDb = (session: any) => {
-  try {
-    const sessions = getSessions();
-    sessions[session.id] = session;
-    fs.writeFileSync(DB_FILE, JSON.stringify(sessions, null, 2));
-  } catch (e) { console.error("DB Save Failed", e); }
-};
 
 // =================================================================
-// 1. CREATE INTERVIEW (Fixed: Generates questions based on Difficulty)
+// 1. CREATE INTERVIEW
 // =================================================================
 router.post('/create', async (req, res) => {
   try {
     const { difficulty } = req.body;
     const sessionId = uuidv4();
-    
-    // Normalize difficulty (default to medium)
-    const diffLevel = (difficulty || 'medium').toLowerCase();
+    const diffLevel = (typeof difficulty === 'string' ? difficulty : 'medium').toLowerCase();
 
-    // Set Duration
-    let duration = 1800; // Medium = 30 mins
-    if (diffLevel === 'easy') duration = 900;   // Easy = 15 mins
-    if (diffLevel === 'hard') duration = 2700;  // Hard = 45 mins
+    let duration = 1800;
+    if (diffLevel === 'easy') duration = 900;
+    if (diffLevel === 'hard') duration = 2700;
 
-    console.log(`[CREATE] Session: ${sessionId} | Level: ${diffLevel}`);
-
-    // FIX: Generate 3 questions matching the SELECTED difficulty
-    // Previously, this was hardcoded to 'easy', 'medium', 'hard' regardless of choice.
     const [q1, q2, q3] = await Promise.all([
-      geminiService.generateDSAQuestion(diffLevel as any),
-      geminiService.generateDSAQuestion(diffLevel as any),
-      geminiService.generateDSAQuestion(diffLevel as any)
+      geminiService.generateDSAQuestion(diffLevel),
+      geminiService.generateDSAQuestion(diffLevel),
+      geminiService.generateDSAQuestion(diffLevel),
     ]);
 
-    const session = {
-      id: sessionId,
-      startTime: new Date(),
-      questions: [q1, q2, q3], 
+    await connectToDatabase();
+
+    const session = await InterviewSessionModel.create({
+      sessionId,
+      questions: [q1, q2, q3],
       currentQuestionIndex: 0,
-      question: q1, 
+      question: q1,
       scores: [],
       status: 'active',
-      duration: duration, 
-      createdAt: new Date()
-    };
+      duration,
+      startTime: new Date(),
+      createdAt: new Date(),
+    });
 
-    saveSessionToDb(session);
-    res.json({ sessionId, question: q1, duration: duration });
-  } catch (e) { 
+    res.json({ sessionId: session.sessionId, question: q1, duration });
+  } catch (e) {
     console.error(e);
-    res.status(500).json({ error: 'Create failed' }); 
+    res.status(500).json({ error: 'Create failed' });
   }
 });
 
 // =================================================================
-// 2. SUBMIT CODE (Unified Logic)
+// 2. SUBMIT CODE
 // =================================================================
 router.post('/submit', async (req, res) => {
   try {
     const { sessionId, code, language } = req.body;
-    const sessions = getSessions();
-    const session = sessions[sessionId];
+    if (!sessionId || !code || !language) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
 
+    await connectToDatabase();
+    const session = await InterviewSessionModel.findOne({ sessionId });
     if (!session) return res.status(404).json({ error: 'Session expired' });
 
-    // Evaluate Code
-    const result: EvaluationResult = await geminiService.evaluateCode(session.question, code, language);
-    
-    session.scores.push({ 
+    const rawResult = await geminiService.evaluateCode(session.question, code, language);
+    const result: EvaluationResult = {
+      ...rawResult,
+      verdict: rawResult.verdict as EvaluationResult['verdict'],
+    };
+
+    session.scores.push({
       score: result.score,
       verdict: result.verdict,
       code,
-      questionTitle: session.question.title
+      questionTitle: session.question.title,
     });
 
-    const responseData: any = { ...result };
+    const responseData: Record<string, unknown> = { ...result };
 
-    // Move to next question if score is good (e.g. > 60) OR if verdict is 'Accepted'
-    if (result.score >= 60 || result.verdict === 'Accepted') {
+    const passed = result.verdict === 'Accepted' && result.score >= PASSING_SCORE_THRESHOLD;
+
+    if (passed) {
       const nextIndex = session.currentQuestionIndex + 1;
-      
       if (nextIndex < session.questions.length) {
         session.currentQuestionIndex = nextIndex;
-        session.question = session.questions[nextIndex]; 
-        
-        responseData.nextQuestion = session.question; 
-        responseData.message = "Correct! Moving to the next question...";
+        session.question = session.questions[nextIndex];
+        responseData.nextQuestion = session.question;
+        responseData.message = 'Correct! Moving to the next question...';
       } else {
-        responseData.message = "All questions completed!";
+        responseData.message = 'All questions completed!';
         responseData.completed = true;
       }
     } else {
-        responseData.message = "Try again to get a better score.";
+      responseData.message = 'Try again to get a better score.';
     }
 
-    saveSessionToDb(session);
+    await session.save();
     res.json(responseData);
-  } catch (e) { 
+  } catch (e) {
     console.error('Submit error:', e);
-    res.status(500).json({ error: 'Eval failed' }); 
+    res.status(500).json({ error: 'Eval failed' });
   }
 });
 
 // =================================================================
 // 3. GET SESSION
 // =================================================================
-router.get('/:sessionId', (req, res) => {
-  const session = getSessions()[req.params.sessionId];
-  if (!session) return res.status(404).json({ error: 'Not found' });
-  res.json({ session });
+router.get('/:sessionId', async (req, res) => {
+  try {
+    await connectToDatabase();
+    const session = await InterviewSessionModel.findOne({ sessionId: req.params.sessionId }).lean();
+    if (!session) return res.status(404).json({ error: 'Not found' });
+    res.json({ session });
+  } catch (e) {
+    console.error('Get session error:', e);
+    res.status(500).json({ error: 'Failed to retrieve session' });
+  }
 });
 
 // =================================================================
-// 4. COMPLETE INTERVIEW (Inline to prevent import crash)
+// 4. COMPLETE INTERVIEW
 // =================================================================
-router.post('/complete/:sessionId', (req, res) => {
-    const { sessionId } = req.params;
-    const sessions = getSessions();
-    if (sessions[sessionId]) {
-      sessions[sessionId].status = 'completed';
-      saveSessionToDb(sessions[sessionId]);
-    }
+router.post('/complete/:sessionId', async (req, res) => {
+  try {
+    await connectToDatabase();
+    await InterviewSessionModel.updateOne(
+      { sessionId: req.params.sessionId },
+      { $set: { status: 'completed' } }
+    );
     res.json({ message: 'Interview completed' });
+  } catch (e) {
+    console.error('Complete error:', e);
+    res.status(500).json({ error: 'Failed to complete interview' });
+  }
 });
 
 export default router;
