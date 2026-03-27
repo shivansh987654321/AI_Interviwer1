@@ -1,5 +1,5 @@
 import { Server, Socket } from 'socket.io';
-import geminiService from '../services/gemini.service';
+import aiService from '../services/ai.service';
 import connectToDatabase from '../lib/db';
 import Interview from '../models/Interview';
 
@@ -38,7 +38,7 @@ export const initializeInterviewSocket = (io: Server) => {
         // Generate greeting
         try {
             // Passing empty history to get the first greeting
-            const aiResponse = await geminiService.generateVerbalResponse([], "START_INTERVIEW");
+            const aiResponse = await aiService.generateVerbalResponse([], "START_INTERVIEW");
             
             const state = activeSessions.get(sessionId)!;
             state.history.push({ role: 'assistant', content: aiResponse.text });
@@ -67,7 +67,7 @@ export const initializeInterviewSocket = (io: Server) => {
 
       try {
         // 2. Get AI Response
-        const aiResponse = await geminiService.generateVerbalResponse(state.history, text);
+        const aiResponse = await aiService.generateVerbalResponse(state.history, text);
         
         // 3. Add AI response to history
         state.history.push({ role: 'assistant', content: aiResponse.text });
@@ -115,7 +115,7 @@ export const initializeInterviewSocket = (io: Server) => {
 
         // A. Generate Report using Gemini
         // We pass the verbal history AND the coding result
-        const report = await geminiService.generateFinalFeedback(
+        const report = await aiService.generateFinalFeedback(
             state.history, 
             state.codingResult
         );

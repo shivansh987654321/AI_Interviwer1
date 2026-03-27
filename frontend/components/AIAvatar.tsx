@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react';
+// components/AIAvatar.tsx
 
-export default function AIAvatar() {
-  const [isSpeaking, setIsSpeaking] = useState(false);
+interface AIAvatarProps {
+  isSpeaking?: boolean;
+}
 
-  useEffect(() => {
-    // TODO: Integrate with text-to-speech for AI responses
-    // TODO: Animate avatar based on speaking state
-  }, [isSpeaking]);
+export default function AIAvatar({ isSpeaking = false }: AIAvatarProps) {
+  // That's it. No useState, no useEffect needed.
+  // The parent controls this prop — we just use it.
 
   return (
     <div className="avatar-container">
@@ -14,10 +14,16 @@ export default function AIAvatar() {
         <div className="avatar-face">
           <div className="eye left"></div>
           <div className="eye right"></div>
-          <div className="mouth"></div>
+          <div className={`mouth ${isSpeaking ? 'talking' : ''}`}></div>
         </div>
+        {isSpeaking && (
+          <div className="sound-waves">
+            <span></span><span></span><span></span>
+          </div>
+        )}
       </div>
       <div className="avatar-label">AI Interviewer</div>
+      {isSpeaking && <div className="speaking-badge">Speaking…</div>}
 
       <style jsx>{`
         .avatar-container {
@@ -38,10 +44,11 @@ export default function AIAvatar() {
           align-items: center;
           justify-content: center;
           position: relative;
-          transition: transform 0.3s;
+          transition: transform 0.3s, box-shadow 0.3s;
         }
         .avatar.speaking {
           animation: pulse 1s infinite;
+          box-shadow: 0 0 30px rgba(102, 126, 234, 0.6);
         }
         @keyframes pulse {
           0%, 100% { transform: scale(1); }
@@ -60,12 +67,8 @@ export default function AIAvatar() {
           position: absolute;
           top: 25px;
         }
-        .eye.left {
-          left: 20px;
-        }
-        .eye.right {
-          right: 20px;
-        }
+        .eye.left { left: 20px; }
+        .eye.right { right: 20px; }
         .mouth {
           width: 30px;
           height: 15px;
@@ -76,11 +79,46 @@ export default function AIAvatar() {
           bottom: 15px;
           left: 50%;
           transform: translateX(-50%);
+          transition: height 0.15s;
+        }
+        .mouth.talking {
+          animation: talk 0.35s infinite alternate;
+        }
+        @keyframes talk {
+          0% { height: 8px; }
+          50% { height: 18px; }
+          100% { height: 10px; }
+        }
+        .sound-waves {
+          position: absolute;
+          bottom: -10px;
+          display: flex;
+          gap: 3px;
+        }
+        .sound-waves span {
+          width: 4px;
+          background: #667eea;
+          border-radius: 2px;
+          animation: wave 0.6s infinite ease-in-out;
+        }
+        .sound-waves span:nth-child(1) { height: 12px; animation-delay: 0s; }
+        .sound-waves span:nth-child(2) { height: 18px; animation-delay: 0.15s; }
+        .sound-waves span:nth-child(3) { height: 12px; animation-delay: 0.3s; }
+        @keyframes wave {
+          0%, 100% { transform: scaleY(1); }
+          50% { transform: scaleY(1.8); }
         }
         .avatar-label {
           margin-top: 1rem;
           font-weight: 600;
           color: #333;
+        }
+        .speaking-badge {
+          margin-top: 0.4rem;
+          font-size: 0.75rem;
+          color: #667eea;
+          font-weight: 500;
+          letter-spacing: 0.5px;
         }
       `}</style>
     </div>
