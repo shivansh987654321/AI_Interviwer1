@@ -1,262 +1,414 @@
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
 import Link from 'next/link';
 
-// Define the shape of the data we expect from the backend
+// --- TYPES ---
 interface EvaluationResult {
   score: number;
   feedback: string;
-  // Optional fields (in case older data doesn't have them)
   verdict?: string;
   improvements?: string[];
   strengths?: string[];
 }
 
+const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+
+// --- SCORE HELPERS ---
+function getScoreColor(score: number): string {
+  if (score >= 80) return '#4ade80';
+  if (score >= 50) return '#facc15';
+  return '#f87171';
+}
+
+function getScoreLabel(score: number): string {
+  if (score >= 80) return 'Strong Pass';
+  if (score >= 60) return 'Pass';
+  if (score >= 40) return 'Borderline';
+  return 'Needs Work';
+}
+
+// --- ANIMATED SCORE RING ---
+interface ScoreRingProps {
+  score: number;
+  color: string;
+}
+function ScoreRing({ score, color }: ScoreRingProps) {
+  const [displayed, setDisplayed] = useState(0);
+
+  useEffect(() => {
+    let frame: number;
+    const duration = 1200;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const progress = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplayed(Math.round(eased * score));
+      if (progress < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [score]);
+
+  const radius = 64;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (score / 100) * circumference;
+
+  return (
+    <div style={{ position: 'relative', width: 168, height: 168 }}>
+      <svg width="168" height="168" style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx="84" cy="84" r={radius} fill="none" stroke="#222" strokeWidth="10" />
+        <circle
+          cx="84"
+          cy="84"
+          r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth="10"
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset}
+          style={{
+            transition: 'stroke-dashoffset 1.2s cubic-bezier(0.22, 1, 0.36, 1)',
+            filter: `drop-shadow(0 0 8px ${color}80)`,
+          }}
+        />
+      </svg>
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <span style={{ fontSize: '2.8rem', fontWeight: 800, color, lineHeight: 1 }}>
+          {displayed}
+        </span>
+        <span style={{ fontSize: '0.8rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginTop: '4px' }}>
+          Score
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// --- MAIN PAGE ---
 export default function ReportPage() {
   const router = useRouter();
   const { sessionId } = router.query;
   const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [retryCount, setRetryCount] = useState(0);
 
-  useEffect(() => {
+  const fetchReport = useCallback(() => {
     if (!sessionId) return;
-
-    // ✅ Fetch from the dedicated report endpoint (reads from MongoDB)
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
-    
-    axios.get(`${apiUrl}/api/interview/report/${sessionId}`)
-      .then(response => {
+    setLoading(true);
+    setError('');
+    axios
+      .get(`${apiUrl}/api/interview/report/${sessionId}`)
+      .then((response) => {
         setEvaluation(response.data);
         setLoading(false);
       })
-      .catch(err => {
+      .catch((err) => {
         console.error('Failed to load report:', err);
         setError('Report not found or failed to load.');
         setLoading(false);
       });
-  }, [sessionId]);
+  }, [sessionId, retryCount]);
 
-  // --- 1. Loading State ---
+  useEffect(() => {
+    fetchReport();
+  }, [fetchReport]);
+
   if (loading) {
     return (
       <div className="center-screen">
-        <div className="loader"></div>
-        <p>Loading Report...</p>
+        <div className="loader" />
+        <p style={{ color: '#888', marginTop: '16px' }}>Loading your report...</p>
         <style jsx>{`
           .center-screen {
             display: flex;
             flex-direction: column;
-            justify-content: center;
             align-items: center;
+            justify-content: center;
             height: 100vh;
-            background: #000;
-            color: white;
+            background: #0a0a0a;
           }
           .loader {
-            border: 4px solid #333;
+            border: 4px solid #222;
             border-top: 4px solid #a855f7;
             border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin-bottom: 1rem;
+            width: 44px;
+            height: 44px;
+            animation: spin 0.9s linear infinite;
           }
-          @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+          @keyframes spin { to { transform: rotate(360deg); } }
         `}</style>
       </div>
     );
   }
 
-  // --- 2. Error State ---
   if (error || !evaluation) {
     return (
-      <div className="center-screen">
-        <h2 className="text-red-500 mb-4">{error || 'Report not found'}</h2>
-        <button onClick={() => router.push('/')} className="primary-btn">
-          Back to Home
-        </button>
-        <style jsx>{`
-          .center-screen {
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            background: #000;
-            color: white;
-          }
-          .primary-btn {
-            background: #a855f7;
-            color: white;
-            padding: 10px 20px;
-            border-radius: 8px;
-            border: none;
-            cursor: pointer;
-          }
-        `}</style>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100vh',
+          background: '#0a0a0a',
+          color: '#fff',
+          gap: '16px',
+          fontFamily: 'sans-serif',
+        }}
+      >
+        <div style={{ fontSize: '3rem' }}>⚠️</div>
+        <h2 style={{ color: '#f87171', margin: 0 }}>{error || 'Report not found'}</h2>
+        <p style={{ color: '#666', fontSize: '0.9rem' }}>
+          The report may still be generating. Please try again.
+        </p>
+        <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+          <button
+            onClick={() => setRetryCount((c) => c + 1)}
+            style={{
+              background: '#a855f7',
+              color: 'white',
+              padding: '10px 24px',
+              borderRadius: '8px',
+              border: 'none',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+            }}
+          >
+            Retry
+          </button>
+          <button
+            onClick={() => router.push('/')}
+            style={{
+              background: '#222',
+              color: '#ccc',
+              padding: '10px 24px',
+              borderRadius: '8px',
+              border: '1px solid #444',
+              cursor: 'pointer',
+            }}
+          >
+            Back to Home
+          </button>
+        </div>
       </div>
     );
   }
 
-  // Helper to determine color based on score
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return '#4ade80'; // Green
-    if (score >= 50) return '#facc15'; // Yellow
-    return '#f87171'; // Red
-  };
+  const scoreColor = getScoreColor(evaluation.score);
+  const scoreLabel = evaluation.verdict || getScoreLabel(evaluation.score);
+  const hasStrengths = evaluation.strengths && evaluation.strengths.length > 0;
+  const hasImprovements = evaluation.improvements && evaluation.improvements.length > 0;
 
-  // --- 3. Success State (The Report) ---
   return (
     <div className="report-container">
-      <h1>Interview Report</h1>
+      <header className="report-header">
+        <h1>Interview Report</h1>
+        <p className="session-id">
+          Session #{typeof sessionId === 'string' ? sessionId.slice(-8).toUpperCase() : ''}
+        </p>
+      </header>
 
-      <div className="overall-score">
-        <div className="score-circle" style={{ borderColor: getScoreColor(evaluation.score) }}>
-          <div className="score-value">{evaluation.score}</div>
-          <div className="score-label">Score</div>
+      <section className="score-section">
+        <ScoreRing score={evaluation.score} color={scoreColor} />
+        <div
+          className="verdict-badge"
+          style={{
+            background: scoreColor + '18',
+            color: scoreColor,
+            border: `1px solid ${scoreColor}40`,
+          }}
+        >
+          {scoreLabel}
         </div>
-        
-        {/* If 'verdict' exists, show it, otherwise show generic text based on score */}
-        <div className="verdict" style={{ backgroundColor: getScoreColor(evaluation.score) + '20', color: getScoreColor(evaluation.score) }}>
-          {evaluation.verdict || (evaluation.score >= 70 ? 'Passed' : 'Needs Improvement')}
-        </div>
-      </div>
+      </section>
 
-      <div className="report-sections">
-        {/* Feedback Section */}
+      <div className="cards-grid">
         <section className="card">
           <h2>📝 Feedback</h2>
           <p>{evaluation.feedback}</p>
         </section>
 
-        {/* Improvements Section (Only shows if array exists) */}
-        {evaluation.improvements && evaluation.improvements.length > 0 && (
-          <section className="card">
+        {hasStrengths && (
+          <section className="card strengths-card">
+            <h2>✅ Strengths</h2>
+            <ul className="result-list">
+              {evaluation.strengths!.map((item, idx) => (
+                <li key={idx} className="strength-item">{item}</li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {hasImprovements && (
+          <section className="card improvements-card">
             <h2>🚀 Areas for Improvement</h2>
-            <ul>
-              {evaluation.improvements.map((imp, idx) => (
-                <li key={idx}>{imp}</li>
+            <ul className="result-list">
+              {evaluation.improvements!.map((item, idx) => (
+                <li key={idx} className="improvement-item">{item}</li>
               ))}
             </ul>
           </section>
         )}
       </div>
 
-      <div className="actions">
-        <Link href="/" className="home-button">
+      <footer className="report-actions">
+        <Link href="/" className="action-btn secondary-btn">
           ← Back to Dashboard
         </Link>
-      </div>
+        <Link href="/history" className="action-btn primary-btn">
+          View All Interviews
+        </Link>
+      </footer>
 
       <style jsx>{`
         .report-container {
           min-height: 100vh;
-          background: #000;
+          background: #0a0a0a;
           color: white;
           padding: 2rem;
           font-family: sans-serif;
+          max-width: 860px;
+          margin: 0 auto;
+        }
+        .report-header {
+          text-align: center;
+          margin-bottom: 2.5rem;
         }
         h1 {
-          text-align: center;
-          margin-bottom: 3rem;
-          font-size: 2.5rem;
-          background: linear-gradient(to right, #a855f7, #ec4899);
+          font-size: 2.4rem;
+          margin: 0 0 8px;
+          background: linear-gradient(135deg, #a855f7, #ec4899);
           -webkit-background-clip: text;
+          background-clip: text;
           -webkit-text-fill-color: transparent;
         }
-        .overall-score {
+        .session-id {
+          color: #444;
+          font-size: 0.8rem;
+          letter-spacing: 1px;
+          text-transform: uppercase;
+          margin: 0;
+        }
+        .score-section {
           display: flex;
           flex-direction: column;
           align-items: center;
+          gap: 20px;
           margin-bottom: 3rem;
         }
-        .score-circle {
-          width: 150px;
-          height: 150px;
-          border-radius: 50%;
-          border: 8px solid #333;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          background: #111;
-          box-shadow: 0 0 20px rgba(168, 85, 247, 0.2);
-          margin-bottom: 1.5rem;
-        }
-        .score-value {
-          font-size: 3.5rem;
-          font-weight: 800;
-        }
-        .score-label {
+        .verdict-badge {
+          padding: 6px 20px;
+          border-radius: 24px;
+          font-weight: bold;
           font-size: 0.9rem;
           text-transform: uppercase;
           letter-spacing: 1px;
-          color: #888;
         }
-        .verdict {
-          padding: 0.5rem 1.5rem;
-          border-radius: 20px;
-          font-weight: bold;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-        }
-        .report-sections {
-          max-width: 800px;
-          margin: 0 auto;
+        .cards-grid {
           display: grid;
-          gap: 2rem;
+          gap: 20px;
         }
         .card {
           background: #111;
-          padding: 2rem;
-          border-radius: 12px;
-          border: 1px solid #333;
+          padding: 24px;
+          border-radius: 14px;
+          border: 1px solid #222;
+          transition: border-color 0.2s;
+        }
+        .card:hover {
+          border-color: #333;
+        }
+        .strengths-card {
+          border-color: #14532d44;
+        }
+        .strengths-card:hover {
+          border-color: #4ade8040;
+        }
+        .improvements-card {
+          border-color: #78350f44;
+        }
+        .improvements-card:hover {
+          border-color: #facc1540;
         }
         h2 {
           color: #e0e0e0;
-          margin-top: 0;
-          border-bottom: 1px solid #333;
-          padding-bottom: 1rem;
-          margin-bottom: 1rem;
+          margin: 0 0 16px;
+          font-size: 1.05rem;
+          padding-bottom: 12px;
+          border-bottom: 1px solid #1e1e1e;
         }
         p {
-          color: #a0a0a0;
-          line-height: 1.6;
+          color: #999;
+          line-height: 1.7;
+          margin: 0;
+          font-size: 0.95rem;
         }
-        ul {
+        .result-list {
           list-style: none;
           padding: 0;
+          margin: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
         }
-        li {
-          padding: 0.8rem 0;
-          border-bottom: 1px solid #222;
-          color: #a0a0a0;
-        }
-        li:before {
-          content: "•";
-          color: #a855f7;
-          font-weight: bold;
-          display: inline-block;
-          width: 1em;
-          margin-left: -1em;
-        }
-        .actions {
-          text-align: center;
-          margin-top: 3rem;
-        }
-        .home-button {
-          display: inline-block;
-          padding: 1rem 2rem;
-          background: #333;
-          color: white;
-          text-decoration: none;
+        .result-list li {
+          padding: 10px 12px;
           border-radius: 8px;
-          transition: background 0.2s;
+          font-size: 0.9rem;
+          line-height: 1.5;
         }
-        .home-button:hover {
-          background: #444;
+        .strength-item {
+          background: #052e16;
+          color: #86efac;
+          border: 1px solid #14532d33;
+        }
+        .improvement-item {
+          background: #1c1400;
+          color: #fde68a;
+          border: 1px solid #78350f33;
+        }
+        .report-actions {
+          display: flex;
+          gap: 12px;
+          justify-content: center;
+          margin-top: 3rem;
+          padding-bottom: 2rem;
+          flex-wrap: wrap;
+        }
+        .action-btn {
+          display: inline-block;
+          padding: 12px 28px;
+          border-radius: 10px;
+          text-decoration: none;
+          font-weight: 600;
+          font-size: 0.95rem;
+          transition: opacity 0.2s, transform 0.15s;
+        }
+        .action-btn:hover {
+          opacity: 0.88;
+          transform: translateY(-1px);
+        }
+        .secondary-btn {
+          background: #1a1a1a;
+          color: #ccc;
+          border: 1px solid #333;
+        }
+        .primary-btn {
+          background: linear-gradient(135deg, #a855f7, #ec4899);
+          color: white;
+          border: none;
         }
       `}</style>
     </div>

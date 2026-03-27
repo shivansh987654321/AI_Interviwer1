@@ -1,198 +1,292 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
+import multer from 'multer';
 import aiService from '../services/ai.service';
+import questionService from '../services/question.service';
 import connectToDatabase from '../lib/db';
 import Interview from '../models/Interview';
-// We use 'as any' to avoid strict type issues during quick development
 import { Difficulty, DSAQuestion, EvaluationResult } from '../types/interview.types';
 
 const router = Router();
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
+
+// ---------------------------------------------------------------------------
+// FILE-BASED SESSION STORE
+// WARNING: Not safe for concurrent requests or horizontal scaling.
+//          Replace with Redis or MongoDB in production.
+// ---------------------------------------------------------------------------
 const DB_FILE = path.join(__dirname, '../../sessions.json');
 
-// --- DATABASE HELPERS ---
-// WARNING: File-based storage is not safe for concurrent requests. Use a proper database in production.
 const getSessions = (): Record<string, any> => {
   try {
-    if (!fs.existsSync(DB_FILE)) { fs.writeFileSync(DB_FILE, '{}'); return {}; }
-    return JSON.parse(fs.readFileSync(DB_FILE, 'utf-8') || '{}');
-  } catch (e) { return {}; }
+    if (!fs.existsSync(DB_FILE)) {
+      fs.writeFileSync(DB_FILE, '{}');
+      return {};
+    }
+    const raw = fs.readFileSync(DB_FILE, 'utf-8').trim();
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
 };
 
-const saveSessionToDb = (session: any) => {
+const saveSessionToDb = (session: any): void => {
   try {
     const sessions = getSessions();
     sessions[session.id] = session;
     fs.writeFileSync(DB_FILE, JSON.stringify(sessions, null, 2));
-  } catch (e) { console.error("DB Save Failed", e); }
+  } catch (e) {
+    console.error('[Sessions] DB Save Failed', e);
+  }
 };
 
-// =================================================================
-// 1. CREATE INTERVIEW (Fixed: Generates questions based on Difficulty)
-// =================================================================
-router.post('/create', async (req, res) => {
+const getDuration = (level: string): number => {
+  if (level === 'easy') return 900;
+  if (level === 'hard') return 2700;
+  return 1800;
+};
+
+// ===========================================================================
+// 0a. TEXT-TO-SPEECH
+// ===========================================================================
+router.post('/tts', async (req: Request, res: Response) => {
   try {
-    const { difficulty } = req.body;
-    const sessionId = uuidv4();
-    
-    // Normalize difficulty (default to medium)
-    const diffLevel = (difficulty || 'medium').toLowerCase();
+    const { text, voice } = req.body;
 
-    // Set Duration
-    let duration = 1800; // Medium = 30 mins
-    if (diffLevel === 'easy') duration = 900;   // Easy = 15 mins
-    if (diffLevel === 'hard') duration = 2700;  // Hard = 45 mins
+    if (!text || typeof text !== 'string') {
+      return res.status(400).json({ error: 'text must be a non-empty string' });
+    }
+    if (text.length > 4096) {
+      return res.status(400).json({ error: 'text must be ≤ 4096 characters' });
+    }
 
-    console.log(`[CREATE] Session: ${sessionId} | Level: ${diffLevel}`);
+    const audioBuffer = await aiService.textToSpeech(text, voice ?? 'alloy');
 
-    // FIX: Generate 3 questions matching the SELECTED difficulty
-    // Previously, this was hardcoded to 'easy', 'medium', 'hard' regardless of choice.
-    const [q1, q2, q3] = await Promise.all([
-      aiService.generateDSAQuestion(diffLevel as Difficulty),
-      aiService.generateDSAQuestion(diffLevel as Difficulty),
-      aiService.generateDSAQuestion(diffLevel as Difficulty)
-    ]);
-
-    const session = {
-      id: sessionId,
-      startTime: new Date(),
-      questions: [q1, q2, q3], 
-      currentQuestionIndex: 0,
-      question: q1, 
-      scores: [],
-      status: 'active',
-      duration: duration, 
-      createdAt: new Date()
-    };
-
-    saveSessionToDb(session);
-    res.json({ sessionId, question: q1, duration: duration });
-  } catch (e) { 
-    console.error(e);
-    res.status(500).json({ error: 'Create failed' }); 
+    res.set({
+      'Content-Type': 'audio/mpeg',
+      'Content-Length': String(audioBuffer.length),
+      'Cache-Control': 'no-cache',
+    });
+    res.send(audioBuffer);
+  } catch (e) {
+    console.error('[TTS] Error:', e);
+    res.status(500).json({ error: 'Text-to-speech failed' });
   }
 });
 
-// =================================================================
-// 2. SUBMIT CODE (Unified Logic)
-// =================================================================
-router.post('/submit', async (req, res) => {
+// ===========================================================================
+// 0b. SPEECH-TO-TEXT
+// ===========================================================================
+router.post('/stt', upload.single('audio'), async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'audio file is required' });
+    }
+
+    const mimeType = req.file.mimetype || 'audio/webm';
+    const text = await aiService.speechToText(req.file.buffer, mimeType);
+    res.json({ text });
+  } catch (e) {
+    console.error('[STT] Error:', e);
+    res.status(500).json({ error: 'Speech-to-text failed' });
+  }
+});
+
+// ===========================================================================
+// 1. CREATE INTERVIEW
+// ===========================================================================
+router.post('/create', async (req: Request, res: Response) => {
+  try {
+    const difficulty = ((req.body.difficulty as string) || 'medium').toLowerCase() as Difficulty;
+
+    if (!['easy', 'medium', 'hard'].includes(difficulty)) {
+      return res.status(400).json({ error: 'difficulty must be easy, medium, or hard' });
+    }
+
+    const sessionId = uuidv4();
+    const duration  = getDuration(difficulty);
+
+    console.log(`[CREATE] Session: ${sessionId} | Difficulty: ${difficulty}`);
+
+    const questions = await questionService.generateQuestions(difficulty, 3);
+    const [q1] = questions;
+
+    const session = {
+      id:                   sessionId,
+      difficulty,
+      startTime:            new Date(),
+      questions,
+      currentQuestionIndex: 0,
+      question:             q1,
+      scores:               [],
+      status:               'active',
+      duration,
+      createdAt:            new Date(),
+    };
+
+    saveSessionToDb(session);
+    res.status(201).json({ sessionId, question: q1, duration });
+  } catch (e) {
+    console.error('[CREATE] Error:', e);
+    res.status(500).json({ error: 'Failed to create interview session' });
+  }
+});
+
+// ===========================================================================
+// 2. SUBMIT CODE
+// ===========================================================================
+router.post('/submit', async (req: Request, res: Response) => {
   try {
     const { sessionId, code, language } = req.body;
 
     if (!sessionId || !code || !language) {
-      return res.status(400).json({ error: 'Missing required fields: sessionId, code, language' });
+      return res.status(400).json({
+        error: 'Missing required fields: sessionId, code, language',
+      });
     }
 
     const sessions = getSessions();
-    const session = sessions[sessionId];
+    const session  = sessions[sessionId];
 
-    if (!session) return res.status(404).json({ error: 'Session expired' });
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found or expired' });
+    }
+    if (session.status === 'completed') {
+      return res.status(409).json({ error: 'This interview session is already completed' });
+    }
 
-    // Evaluate Code
-    const result: EvaluationResult = await aiService.evaluateCode(session.question as DSAQuestion, code, language);
-    
-    session.scores.push({ 
-      score: result.score,
-      verdict: result.verdict,
+    const result: EvaluationResult = await aiService.evaluateCode(
+      session.question as DSAQuestion,
       code,
-      questionTitle: session.question.title
+      language
+    );
+
+    session.scores.push({
+      score:         result.score,
+      verdict:       result.verdict,
+      feedback:      result.feedback,
+      code,
+      language,
+      questionTitle: session.question.title,
+      submittedAt:   new Date(),
     });
 
-    const responseData: any = { ...result };
+    const responseData: Record<string, any> = { ...result };
+    const passing = result.score >= 60 || result.verdict === 'Accepted';
 
-    // Move to next question if score is good (e.g. > 60) OR if verdict is 'Accepted'
-    if (result.score >= 60 || result.verdict === 'Accepted') {
+    if (passing) {
       const nextIndex = session.currentQuestionIndex + 1;
-      
+
       if (nextIndex < session.questions.length) {
         session.currentQuestionIndex = nextIndex;
-        session.question = session.questions[nextIndex]; 
-        
-        responseData.nextQuestion = session.question; 
-        responseData.message = "Correct! Moving to the next question...";
+        session.question             = session.questions[nextIndex];
+
+        responseData.nextQuestion  = session.question;
+        responseData.questionIndex = nextIndex;
+        responseData.message       = 'Correct! Moving to the next question…';
       } else {
-        responseData.message = "All questions completed!";
+        session.status         = 'completed';
         responseData.completed = true;
+        responseData.message   = 'All questions completed! Great job.';
       }
     } else {
-        responseData.message = "Try again to get a better score.";
+      responseData.message = `Score ${result.score}/100 — keep trying!`;
     }
 
     saveSessionToDb(session);
     res.json(responseData);
-  } catch (e) { 
-    console.error('Submit error:', e);
-    res.status(500).json({ error: 'Eval failed' }); 
+  } catch (e) {
+    console.error('[SUBMIT] Error:', e);
+    res.status(500).json({ error: 'Code evaluation failed' });
   }
 });
 
-// =================================================================
-// 3. GET SESSION
-// =================================================================
-router.get('/:sessionId', (req, res) => {
-  const session = getSessions()[req.params.sessionId];
-  if (!session) return res.status(404).json({ error: 'Not found' });
-  res.json({ session });
-});
-
-// =================================================================
-// 4. COMPLETE INTERVIEW (Inline to prevent import crash)
-// =================================================================
-router.post('/complete/:sessionId', (req, res) => {
-    const { sessionId } = req.params;
-    const sessions = getSessions();
-    if (sessions[sessionId]) {
-      sessions[sessionId].status = 'completed';
-      saveSessionToDb(sessions[sessionId]);
-    }
-    res.json({ message: 'Interview completed' });
-});
-
-// =================================================================
-// 5. REPORT — returns a saved interview report from MongoDB
-// =================================================================
-router.get('/report/:sessionId', async (req, res) => {
+// ===========================================================================
+// 5. REPORT — must be declared BEFORE /:sessionId
+// ===========================================================================
+router.get('/report/:sessionId', async (req: Request, res: Response) => {
   const { sessionId } = req.params;
-  if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
 
   try {
     await connectToDatabase();
     const interview = await Interview.findOne({ sessionId }).lean();
-    if (!interview) return res.status(404).json({ error: 'Report not found' });
+
+    if (!interview) {
+      return res.status(404).json({ error: 'Report not found. The interview may not have been saved yet.' });
+    }
+
     res.json({
-      score: interview.score,
-      feedback: interview.feedback,
-      verdict: interview.verdict,
-      improvements: interview.improvements || [],
-      date: interview.date,
-      sessionId: interview.sessionId,
+      sessionId:    interview.sessionId,
+      score:        interview.score,
+      feedback:     interview.feedback,
+      verdict:      interview.verdict,
+      improvements: interview.improvements ?? [],
+      difficulty:   (interview as any).difficulty,
+      date:         interview.date,
     });
   } catch (err) {
-    console.error('Report fetch error:', err);
+    console.error('[REPORT] Fetch error:', err);
     res.status(500).json({ error: 'Failed to fetch report' });
   }
 });
 
-// =================================================================
-// 6. HISTORY — returns all past interviews for a given userId
-// =================================================================
-router.get('/history/:userId', async (req, res) => {
+// ===========================================================================
+// 6. HISTORY — must be declared BEFORE /:sessionId
+// ===========================================================================
+router.get('/history/:userId', async (req: Request, res: Response) => {
   const { userId } = req.params;
-  if (!userId) return res.status(400).json({ error: 'userId is required' });
+
+  if (!userId) {
+    return res.status(400).json({ error: 'userId is required' });
+  }
 
   try {
     await connectToDatabase();
     const interviews = await Interview.find({ userId })
-      .sort({ date: -1 })   // newest first
-      .select('sessionId date score feedback verdict')
+      .sort({ date: -1 })
+      .select('sessionId date score feedback verdict difficulty questionsAttempted')
       .lean();
+
     res.json({ interviews });
   } catch (err) {
-    console.error('History fetch error:', err);
-    res.status(500).json({ error: 'Failed to fetch history' });
+    console.error('[HISTORY] Fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch interview history' });
   }
+});
+
+// ===========================================================================
+// 3. GET SESSION — catch-all, must be LAST among GET routes
+// ===========================================================================
+router.get('/:sessionId', (req: Request, res: Response) => {
+  const session = getSessions()[req.params.sessionId];
+  if (!session) {
+    return res.status(404).json({ error: 'Session not found' });
+  }
+  res.json({ session });
+});
+
+// ===========================================================================
+// 4. COMPLETE INTERVIEW
+// ===========================================================================
+router.post('/complete/:sessionId', (req: Request, res: Response) => {
+  const { sessionId } = req.params;
+  const sessions = getSessions();
+
+  if (!sessions[sessionId]) {
+    return res.status(404).json({ error: 'Session not found' });
+  }
+
+  sessions[sessionId].status      = 'completed';
+  sessions[sessionId].completedAt = new Date();
+  saveSessionToDb(sessions[sessionId]);
+
+  res.json({ message: 'Interview marked as completed' });
 });
 
 export default router;

@@ -16,6 +16,28 @@ import { DSAQuestion, EvaluationResult } from '../types/interview.types';
 class MockAIService {
   // Minimum characters a submission must have to count as a real attempt
   private static readonly MIN_CODE_LENGTH = 10;
+
+  // ----------------------------------------------------------------
+  // TEXT-TO-SPEECH (Mock — returns a tiny silent MP3)
+  // ----------------------------------------------------------------
+  async textToSpeech(text: string, _voice?: string): Promise<Buffer> {
+    void text;
+    // Valid minimal MP3 — ID3 tag + silent frame.
+    // This is a proper 1-second silent MP3 that browsers can decode.
+    const silentMp3 = Buffer.from(
+      'SUQzAwAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjI5LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjU0AAAAAAAAAAAAAAAAJAAAAAAAAAAAAnHCMt8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      'base64',
+    );
+    return silentMp3;
+  }
+
+  // ----------------------------------------------------------------
+  // SPEECH-TO-TEXT (Mock — returns a canned string)
+  // ----------------------------------------------------------------
+  async speechToText(_audioBuffer: Buffer, _mimeType?: string): Promise<string> {
+    return '[MOCK] I think the time complexity of a hash map lookup is O(1) on average.';
+  }
+
   // ----------------------------------------------------------------
   // PHASE 4: PROBLEM-SOLVING
   // ----------------------------------------------------------------

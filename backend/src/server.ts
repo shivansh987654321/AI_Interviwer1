@@ -27,11 +27,9 @@ const server = http.createServer(app);
 const io = new SocketIOServer(server, {
   cors: {
     // FIX: Allow all localhost variations
-    origin: [
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-      "http://localhost:3001"
-    ],
+    origin: process.env.FRONTEND_URL
+      ? [process.env.FRONTEND_URL, "http://localhost:3000", "http://localhost:3001"]
+      : ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001"],
     methods: ["GET", "POST"],
     credentials: true,
   },
