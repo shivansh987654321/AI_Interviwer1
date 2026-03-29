@@ -51,11 +51,15 @@ class ReportService {
         sessionId:       doc.sessionId,
         overallScore:    doc.score,
         maxScore:        100,
-        percentage:      doc.score,
-        scores:          [],
-        strengths:       [],
+        percentage:      Math.round(doc.score),
+        scores:          (doc.verbatim || []).length > 0
+          ? [{ questionId: sessionId, score: doc.score, maxScore: 100, feedback: doc.feedback, verdict: doc.verdict }]
+          : [],
+        strengths:       (doc.improvements || []).length === 0 ? ['Completed the interview'] : [],
         weaknesses:      doc.improvements ?? [],
-        recommendations: [],
+        recommendations: doc.improvements?.length
+          ? ['Focus on the areas listed above', 'Practice with timed coding challenges']
+          : ['Keep up the great work!'],
         generatedAt:     doc.date ?? new Date(),
       };
     } catch (err) {

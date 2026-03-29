@@ -1,9 +1,12 @@
+// pages/interview/[sessionId].tsx
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useUser } from '@clerk/nextjs';
 import axios from 'axios';
 import Editor, { OnChange } from '@monaco-editor/react';
 import VoiceAssistant from '../../components/VoiceAssistant';
+import CameraFeed from '../../components/CameraFeed';
+import AIAvatar from '../../components/AIAvatar';
 import type { Socket } from 'socket.io-client';
 
 interface Question {
@@ -24,8 +27,15 @@ const LANGUAGES = ['javascript', 'python', 'java', 'cpp'] as const;
 const TIME_WARNING_THRESHOLD = 300;
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
 
-const DIFFICULTY_COLORS: Record<string, string> = {
+const DIFF_COLORS: Record<string, string> = {
   easy: '#4ade80', medium: '#facc15', hard: '#f87171',
+};
+
+const DIFFICULTY_LEVELS: Record<string, { label: string; color: string; progress: number }> = {
+  warmup: { label: 'Introduction', color: '#4ade80',  progress: 10 },
+  easy:   { label: 'Easy',         color: '#60a5fa',  progress: 35 },
+  medium: { label: 'Medium',       color: '#facc15',  progress: 65 },
+  hard:   { label: 'Hard',         color: '#f87171',  progress: 90 },
 };
 
 // ---- TOAST ----
@@ -34,196 +44,62 @@ function Toast({ message, type, onDismiss }: { message: string; type: string; on
   const accent = type === 'success' ? '#4ade80' : type === 'error' ? '#f87171' : '#60a5fa';
   return (
     <div style={{
-      position: 'fixed', bottom: 24, right: 24,
-      background: 'rgba(15,15,20,0.92)',
-      backdropFilter: 'blur(16px)',
-      border: `1px solid rgba(255,255,255,0.08)`,
-      borderLeft: `3px solid ${accent}`,
-      color: '#fff', padding: '12px 16px', borderRadius: 12,
-      zIndex: 9999, maxWidth: 340,
-      boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-      display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.88rem',
+      position: 'fixed', bottom: 100, right: 24,
+      background: 'rgba(10,10,16,0.95)', backdropFilter: 'blur(16px)',
+      border: `1px solid rgba(255,255,255,0.07)`, borderLeft: `3px solid ${accent}`,
+      color: '#fff', padding: '10px 14px', borderRadius: 10,
+      zIndex: 9999, maxWidth: 320, boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+      display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem',
     }}>
       <span style={{ flex: 1 }}>{message}</span>
-      <button onClick={onDismiss} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '1rem', padding: 0 }}>✕</button>
+      <button onClick={onDismiss} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', cursor: 'pointer', fontSize: '0.9rem' }}>✕</button>
     </div>
   );
 }
 
-// ---- LANGUAGE CONFIRM MODAL ----
+// ---- LANGUAGE CONFIRM ----
 function LangConfirmModal({ targetLang, onConfirm, onCancel }: { targetLang: string; onConfirm: () => void; onCancel: () => void }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div style={{ background: 'rgba(20,20,28,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: '32px 36px', textAlign: 'center', color: '#fff', maxWidth: 360, boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}>
-        <div style={{ fontSize: '2rem', marginBottom: 12 }}>🔄</div>
-        <h3 style={{ margin: '0 0 8px', fontSize: '1.1rem' }}>Switch to {targetLang.toUpperCase()}?</h3>
-        <p style={{ color: 'rgba(255,255,255,0.4)', marginBottom: 24, fontSize: '0.88rem', lineHeight: 1.5 }}>
-          Your current code will be reset. This cannot be undone.
-        </p>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-          <button onClick={onCancel} style={{ padding: '9px 20px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)', borderRadius: 10, cursor: 'pointer', fontSize: '0.9rem' }}>
-            Cancel
-          </button>
-          <button onClick={onConfirm} style={{ padding: '9px 20px', background: 'linear-gradient(135deg,#7c3aed,#a855f7)', border: 'none', color: '#fff', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: '0.9rem' }}>
-            Switch
-          </button>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
+      <div style={{ background: 'rgba(15,15,20,0.98)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: '28px 32px', textAlign: 'center', color: '#fff', maxWidth: 340 }}>
+        <div style={{ fontSize: '1.8rem', marginBottom: 10 }}>🔄</div>
+        <h3 style={{ margin: '0 0 8px', fontSize: '1.05rem' }}>Switch to {targetLang.toUpperCase()}?</h3>
+        <p style={{ color: 'rgba(255,255,255,0.35)', marginBottom: 20, fontSize: '0.85rem' }}>Current code will be reset.</p>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+          <button onClick={onCancel} style={{ padding: '8px 18px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)', borderRadius: 8, cursor: 'pointer' }}>Cancel</button>
+          <button onClick={onConfirm} style={{ padding: '8px 18px', background: 'linear-gradient(135deg,#7c3aed,#a855f7)', border: 'none', color: '#fff', borderRadius: 8, cursor: 'pointer', fontWeight: 700 }}>Switch</button>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ---- PROFESSIONAL AVATAR ----
-function AIAvatar({ isSpeaking }: { isSpeaking: boolean }) {
-  return (
-    <div className="avatar-wrap">
-      {/* Animated ring when speaking */}
-      {isSpeaking && (
-        <>
-          <div className="avatar-ring ring1" />
-          <div className="avatar-ring ring2" />
-        </>
-      )}
-
-      {/* Photo placeholder — replace src with real photo if you have one */}
-      <div className="avatar-photo">
-        {/* Suit-wearing professional silhouette using CSS */}
-        <svg width="100" height="100" viewBox="0 0 100 100" fill="none">
-          {/* Head */}
-          <circle cx="50" cy="32" r="16" fill="#d4a574" />
-          {/* Hair */}
-          <ellipse cx="50" cy="22" rx="16" ry="8" fill="#3d2b1f" />
-          {/* Suit jacket */}
-          <path d="M20 100 Q20 68 35 64 L50 70 L65 64 Q80 68 80 100Z" fill="#1e293b" />
-          {/* White shirt */}
-          <path d="M42 64 L50 70 L58 64 L56 100 L44 100Z" fill="#f1f5f9" />
-          {/* Tie */}
-          <path d="M48 66 L50 72 L52 66 L51 90 L50 92 L49 90Z" fill="#7c3aed" />
-          {/* Lapels */}
-          <path d="M35 64 L42 64 L44 100 L20 100 Q20 72 35 64Z" fill="#1e293b" />
-          <path d="M65 64 L58 64 L56 100 L80 100 Q80 72 65 64Z" fill="#1e293b" />
-          {/* Collar */}
-          <path d="M44 64 L50 68 L42 64Z" fill="#f1f5f9" />
-          <path d="M56 64 L50 68 L58 64Z" fill="#f1f5f9" />
-          {/* Neck */}
-          <rect x="44" y="47" width="12" height="18" rx="4" fill="#d4a574" />
-          {/* Shoulders hint */}
-          <ellipse cx="27" cy="68" rx="10" ry="6" fill="#1e293b" />
-          <ellipse cx="73" cy="68" rx="10" ry="6" fill="#1e293b" />
-        </svg>
-      </div>
-
-      {/* Speaking waveform */}
-      {isSpeaking && (
-        <div className="waveform">
-          {[1,2,3,4,5].map(i => (
-            <div key={i} className="wave-bar" style={{ animationDelay: `${i * 0.1}s` }} />
-          ))}
-        </div>
-      )}
-
-      <div className="avatar-name">Alex Chen</div>
-      <div className="avatar-role">Senior Engineer · FAANG</div>
-      {isSpeaking && <div className="speaking-badge">● Speaking</div>}
-
-      <style jsx>{`
-        .avatar-wrap {
-          position: relative;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 8px;
-        }
-        .avatar-photo {
-          width: 110px; height: 110px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, #1e293b, #0f172a);
-          border: 2px solid rgba(168,85,247,0.4);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          overflow: hidden;
-          position: relative;
-          z-index: 2;
-          box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-        }
-        .avatar-ring {
-          position: absolute;
-          border-radius: 50%;
-          border: 2px solid rgba(168,85,247,0.3);
-          z-index: 1;
-        }
-        .ring1 { width: 130px; height: 130px; animation: ringPulse 1.5s ease-out infinite; }
-        .ring2 { width: 155px; height: 155px; animation: ringPulse 1.5s ease-out infinite 0.5s; }
-        @keyframes ringPulse {
-          0%   { transform: scale(0.9); opacity: 0.8; }
-          100% { transform: scale(1.1); opacity: 0; }
-        }
-        .waveform {
-          display: flex;
-          align-items: center;
-          gap: 3px;
-          height: 20px;
-        }
-        .wave-bar {
-          width: 3px;
-          background: #a855f7;
-          border-radius: 999px;
-          animation: wave 0.8s ease-in-out infinite alternate;
-        }
-        .wave-bar:nth-child(1) { height: 6px; }
-        .wave-bar:nth-child(2) { height: 14px; }
-        .wave-bar:nth-child(3) { height: 18px; }
-        .wave-bar:nth-child(4) { height: 14px; }
-        .wave-bar:nth-child(5) { height: 6px; }
-        @keyframes wave {
-          from { transform: scaleY(0.4); }
-          to   { transform: scaleY(1); }
-        }
-        .avatar-name {
-          font-weight: 700;
-          font-size: 1rem;
-          color: rgba(255,255,255,0.9);
-        }
-        .avatar-role {
-          font-size: 0.78rem;
-          color: rgba(255,255,255,0.35);
-        }
-        .speaking-badge {
-          font-size: 0.72rem;
-          color: #a855f7;
-          font-weight: 600;
-          animation: blink 1s ease-in-out infinite;
-        }
-        @keyframes blink {
-          0%,100% { opacity: 1; }
-          50%      { opacity: 0.4; }
-        }
-      `}</style>
     </div>
   );
 }
 
 // ---- MAIN PAGE ----
 export default function InterviewPage() {
-  const router = useRouter();
+  const router     = useRouter();
   const { sessionId } = router.query;
-  const { user } = useUser();
+  const { user }   = useUser();
 
-  const [question, setQuestion]           = useState<Question | null>(null);
-  const [code, setCode]                   = useState(TEMPLATES.javascript);
-  const [language, setLanguage]           = useState('javascript');
-  const [timeLeft, setTimeLeft]           = useState(0);
+  const [question, setQuestion]     = useState<Question | null>(null);
+  const [code, setCode]             = useState(TEMPLATES.javascript);
+  const [language, setLanguage]     = useState('javascript');
+  const [timeLeft, setTimeLeft]     = useState(0);
   const [isCodingStarted, setIsCodingStarted] = useState(false);
-  const [loading, setLoading]             = useState(true);
-  const [submitting, setSubmitting]       = useState(false);
-  const [routerReady, setRouterReady]     = useState(false);
-  const [aiSpeaking, setAiSpeaking]       = useState(false);
-  const [toast, setToast]                 = useState<{ message: string; type: string } | null>(null);
-  const [pendingLang, setPendingLang]     = useState<string | null>(null);
-  const [timeExpired, setTimeExpired]     = useState(false);
+  const [loading, setLoading]       = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [routerReady, setRouterReady] = useState(false);
+  const [aiSpeaking, setAiSpeaking] = useState(false);
+  const [toast, setToast]           = useState<{ message: string; type: string } | null>(null);
+  const [pendingLang, setPendingLang] = useState<string | null>(null);
+  const [timeExpired, setTimeExpired] = useState(false);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [interviewCompleted, setInterviewCompleted] = useState(false);
+  const [difficultyLevel, setDifficultyLevel] = useState('warmup');
+  const [resumeContext] = useState<string | undefined>(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('resumeContext') || undefined;
+    }
+  });
 
   const socketRef = useRef<Socket | null>(null);
 
@@ -232,14 +108,14 @@ export default function InterviewPage() {
   useEffect(() => {
     if (!sessionId || !routerReady) return;
     axios.get(`${apiUrl}/api/interview/${sessionId}`)
-      .then((res) => {
+      .then(res => {
         const s = res.data.session;
         setQuestion(s.question);
         setTimeLeft(s.duration || 1800);
         setLoading(false);
       })
       .catch(() => {
-        showToast('Failed to load interview session.', 'error');
+        showToast('Failed to load session.', 'error');
         setLoading(false);
       });
   }, [sessionId, routerReady]);
@@ -247,7 +123,7 @@ export default function InterviewPage() {
   useEffect(() => {
     if (!isCodingStarted || timeLeft <= 0) return;
     const t = setInterval(() => {
-      setTimeLeft((prev) => {
+      setTimeLeft(prev => {
         if (prev === TIME_WARNING_THRESHOLD) showToast('⚠️ 5 minutes remaining!', 'info');
         if (prev <= 1) { clearInterval(t); setTimeExpired(true); showToast('⏰ Time is up!', 'error'); return 0; }
         return prev - 1;
@@ -262,10 +138,15 @@ export default function InterviewPage() {
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
   const timerColor = timeLeft <= TIME_WARNING_THRESHOLD ? '#f87171' : '#4ade80';
 
-  const handleSocketReady  = useCallback((s: Socket) => { socketRef.current = s; }, []);
-  const handleCodingStart  = useCallback(() => setIsCodingStarted(true), []);
+  const handleSocketReady    = useCallback((s: Socket) => { socketRef.current = s; }, []);
+  const handleCodingStart    = useCallback(() => setIsCodingStarted(true), []);
   const handleSpeakingChange = useCallback((v: boolean) => setAiSpeaking(v), []);
   const handleEditorChange: OnChange = useCallback((v) => setCode(v || ''), []);
+  const handleDifficultyChange = useCallback((level: string) => setDifficultyLevel(level), []);
+
+  const handleCheatEvent = useCallback((type: string, detail?: string) => {
+    socketRef.current?.emit('cheat_event', { sessionId, type, detail });
+  }, [sessionId]);
 
   const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const l = e.target.value;
@@ -274,19 +155,16 @@ export default function InterviewPage() {
 
   const confirmLanguageSwitch = () => {
     if (!pendingLang) return;
-    setLanguage(pendingLang);
-    setCode(TEMPLATES[pendingLang]);
-    setPendingLang(null);
+    setLanguage(pendingLang); setCode(TEMPLATES[pendingLang]); setPendingLang(null);
   };
 
   const handleSubmit = async () => {
-    if (!code.trim()) { showToast('Please write some code first.', 'error'); return; }
+    if (!code.trim()) { showToast('Write some code first.', 'error'); return; }
     if (interviewCompleted) { showToast('Interview already completed!', 'info'); return; }
     setSubmitting(true);
     try {
       const res = await axios.post(`${apiUrl}/api/interview/submit`, { sessionId, code, language });
       socketRef.current?.emit('submit_code_result', { sessionId, result: res.data });
-
       if (res.data.nextQuestion) {
         showToast('✅ Correct! Moving to next question.', 'success');
         setQuestion(res.data.nextQuestion);
@@ -294,7 +172,7 @@ export default function InterviewPage() {
         setQuestionIndex(res.data.questionIndex ?? questionIndex + 1);
       } else if (res.data.completed) {
         setInterviewCompleted(true);
-        showToast('🎉 All done! Click "Finish Interview" to get your report.', 'success');
+        showToast('🎉 All done! Click "Finish" to get your report.', 'success');
       } else {
         showToast(res.data.message || 'Try again!', 'info');
       }
@@ -310,28 +188,23 @@ export default function InterviewPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#050508', color: 'rgba(255,255,255,0.4)', gap: 16, fontFamily: 'sans-serif' }}>
-        <div style={{ width: 36, height: 36, border: '2px solid rgba(255,255,255,0.1)', borderTopColor: '#a855f7', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-        <p style={{ margin: 0 }}>Initializing Interview...</p>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      </div>
-    );
-  }
+  if (loading) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#050508', color: 'rgba(255,255,255,0.4)', gap: 12, fontFamily: 'sans-serif' }}>
+      <div style={{ width: 30, height: 30, border: '2px solid rgba(255,255,255,0.08)', borderTopColor: '#a855f7', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+      <p style={{ margin: 0 }}>Initializing Interview...</p>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
 
   if (!sessionId || typeof sessionId !== 'string') return null;
 
+  const diffInfo = DIFFICULTY_LEVELS[difficultyLevel] || DIFFICULTY_LEVELS.warmup;
+
   return (
     <div className="root">
-      {/* Subtle background */}
-      <div className="bg-glow bg-glow1" />
-      <div className="bg-glow bg-glow2" />
-
       {pendingLang && pendingLang !== language && (
         <LangConfirmModal targetLang={pendingLang} onConfirm={confirmLanguageSwitch} onCancel={() => setPendingLang(null)} />
       )}
-
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
       <VoiceAssistant
@@ -340,76 +213,102 @@ export default function InterviewPage() {
         userId={user?.id}
         onSpeakingChange={handleSpeakingChange}
         onSocketReady={handleSocketReady}
+        onDifficultyChange={handleDifficultyChange}
+        onCheatEvent={handleCheatEvent}
+        resumeContext={resumeContext}
       />
 
-      {/* Header */}
+      {/* ====== HEADER ====== */}
       <header className="header">
         <div className="header-left">
-          <span className="header-brand">⚡ AI Interviewer</span>
-          {question?.difficulty && (
-            <span className="diff-badge" style={{ color: DIFFICULTY_COLORS[question.difficulty] || '#fff', borderColor: DIFFICULTY_COLORS[question.difficulty] || '#fff', background: `${DIFFICULTY_COLORS[question.difficulty]}15` }}>
-              {question.difficulty.toUpperCase()}
-            </span>
+          <span className="brand">⚡ AI Interviewer</span>
+          <div className="divider" />
+          {!isCodingStarted ? (
+            <span className="phase-label">Verbal Round</span>
+          ) : (
+            <>
+              {question?.difficulty && (
+                <span className="diff-badge" style={{ color: DIFF_COLORS[question.difficulty] || '#fff', background: `${DIFF_COLORS[question.difficulty] || '#fff'}15`, borderColor: `${DIFF_COLORS[question.difficulty] || '#fff'}40` }}>
+                  {question.difficulty.toUpperCase()}
+                </span>
+              )}
+              <span className="q-title">{question?.title || 'Coding Challenge'}</span>
+            </>
           )}
-          <span className="question-title">{question?.title || 'Technical Interview'}</span>
         </div>
         <div className="header-right">
           {isCodingStarted && (
             <>
-              <div className="q-progress">
-                Q {questionIndex + 1} / 3
-              </div>
-              <div className="timer" style={{ color: timerColor }}>
+              <div className="q-counter">Q {questionIndex + 1} / 3</div>
+              <div className="coding-timer" style={{ color: timerColor }}>
                 ⏱ {formatTime(timeLeft)}
-                {timeExpired && <span className="expired-pill">TIME UP</span>}
+                {timeExpired && <span className="expired-tag">TIME UP</span>}
               </div>
+              <select value={language} onChange={handleLanguageChange} className="lang-sel" disabled={!isCodingStarted}>
+                {LANGUAGES.map(l => (
+                  <option key={l} value={l}>{l.charAt(0).toUpperCase() + l.slice(1)}</option>
+                ))}
+              </select>
+              <button onClick={handleSubmit} disabled={submitting || !isCodingStarted || !!pendingLang} className="submit-btn">
+                {submitting
+                  ? <><span className="spin-sm" /> Evaluating...</>
+                  : 'Submit Solution'}
+              </button>
             </>
           )}
-          <select value={language} onChange={handleLanguageChange} className="lang-select" disabled={!isCodingStarted}>
-            {LANGUAGES.map((l) => (
-              <option key={l} value={l}>{l.charAt(0).toUpperCase() + l.slice(1)}</option>
-            ))}
-          </select>
-          <button onClick={handleSubmit} disabled={submitting || !isCodingStarted} className="submit-btn">
-            {submitting
-              ? <span className="btn-inner"><span className="spinner" /> Evaluating...</span>
-              : 'Submit Solution'}
-          </button>
         </div>
       </header>
 
-      {/* Workspace */}
+      {/* ====== WORKSPACE ====== */}
       <main className="workspace">
         {!isCodingStarted ? (
-          /* ---- VERBAL ROUND ---- */
-          <div className="verbal-screen">
-            <div className="verbal-card">
-              <AIAvatar isSpeaking={aiSpeaking} />
-              <div className="verbal-info">
-                <h2>Verbal Interview in Progress</h2>
-                <p>Answer the interviewer&apos;s questions out loud. The coding environment unlocks after the theory round.</p>
-                <div className="verbal-steps">
-                  {['Introduction', 'Theory Questions', 'Coding Round'].map((step, i) => (
-                    <div key={step} className="step">
-                      <div className={`step-dot ${i === 1 ? 'active' : i === 0 ? 'done' : ''}`}>
-                        {i === 0 ? '✓' : i + 1}
-                      </div>
-                      <span className={`step-label ${i === 1 ? 'step-active' : ''}`}>{step}</span>
-                    </div>
-                  ))}
-                </div>
+          /* ---- VERBAL ROUND LAYOUT ---- */
+          <div className="verbal-layout">
+
+            {/* LEFT: Interviewer panel */}
+            <div className="interviewer-panel">
+              {/* Difficulty progress — hidden for realistic interview */}
+
+              {/* Avatar */}
+              <div className="avatar-section">
+                <AIAvatar
+                  isSpeaking={aiSpeaking}
+                  difficulty_level={difficultyLevel as any}
+                />
               </div>
+
+              {/* Status message */}
+              <div className="interviewer-status">
+                {aiSpeaking
+                  ? <span style={{ color: '#a855f7' }}>Alex is speaking...</span>
+                  : <span style={{ color: 'rgba(255,255,255,0.35)' }}>Waiting for your response</span>}
+              </div>
+            </div>
+
+            {/* RIGHT: Candidate panel */}
+            <div className="candidate-panel">
+              {/* Camera */}
+              <div className="camera-section">
+                <CameraFeed
+                  sessionId={sessionId}
+                  onCheatEvent={handleCheatEvent}
+                />
+              </div>
+
+              {/* Interview steps — hidden for realistic feel */}
+
+              {/* Tip hidden */}
             </div>
           </div>
         ) : (
           /* ---- CODING ROUND ---- */
-          <div className="coding-area">
+          <div className="coding-layout">
             {/* Problem panel */}
             <div className="problem-panel">
-              <div className="problem-header">
-                <h3>Problem Statement</h3>
+              <div className="problem-head">
+                <span className="problem-title">{question?.title || 'Problem'}</span>
                 {question?.difficulty && (
-                  <span className="problem-diff" style={{ color: DIFFICULTY_COLORS[question.difficulty] || '#fff' }}>
+                  <span style={{ color: DIFF_COLORS[question.difficulty] || '#fff', fontSize: '0.75rem', fontWeight: 700, textTransform: 'capitalize' }}>
                     {question.difficulty}
                   </span>
                 )}
@@ -418,33 +317,36 @@ export default function InterviewPage() {
 
               {question?.testCases && question.testCases.length > 0 && (
                 <div className="example-box">
-                  <div className="example-label">Example</div>
-                  <div className="example-row">
-                    <span className="example-key">Input:</span>
-                    <code>{question.testCases[0].input}</code>
-                  </div>
-                  <div className="example-row">
-                    <span className="example-key">Output:</span>
-                    <code>{question.testCases[0].output}</code>
-                  </div>
+                  <div className="example-head">Example</div>
+                  {question.testCases.slice(0, 2).map((tc, i) => (
+                    <div key={i} className="example-case">
+                      <div className="case-row"><span className="case-key">Input:</span> <code>{tc.input}</code></div>
+                      <div className="case-row"><span className="case-key">Output:</span> <code>{tc.output}</code></div>
+                      {i < question.testCases!.length - 1 && <hr className="case-divider" />}
+                    </div>
+                  ))}
                 </div>
               )}
 
               {timeExpired && (
-                <div className="expired-notice">
-                  ⏰ Time expired — you can still submit your current solution.
-                </div>
+                <div className="expired-banner">⏰ Time expired — you may still submit.</div>
               )}
 
-              {/* Question progress */}
+              {/* Question dots */}
               <div className="q-dots">
                 {[0, 1, 2].map(i => (
-                  <div key={i} className={`q-dot ${i < questionIndex ? 'q-done' : i === questionIndex ? 'q-current' : ''}`} />
+                  <div key={i} className={`q-dot ${i < questionIndex ? 'q-done' : i === questionIndex ? 'q-cur' : ''}`} />
                 ))}
+                <span className="q-dot-label">Question {questionIndex + 1} of 3</span>
+              </div>
+
+              {/* Small camera in coding mode */}
+              <div className="coding-camera">
+                <CameraFeed sessionId={sessionId} onCheatEvent={handleCheatEvent} />
               </div>
             </div>
 
-            {/* Editor panel */}
+            {/* Editor */}
             <div className="editor-panel">
               <Editor
                 height="100%"
@@ -460,7 +362,7 @@ export default function InterviewPage() {
                   scrollBeyondLastLine: false,
                   padding: { top: 20 },
                   readOnly: timeExpired,
-                  fontFamily: "'Fira Code', 'Cascadia Code', monospace",
+                  fontFamily: "'Fira Code','Cascadia Code',monospace",
                   fontLigatures: true,
                   lineNumbers: 'on',
                   renderLineHighlight: 'gutter',
@@ -473,289 +375,232 @@ export default function InterviewPage() {
 
       <style jsx>{`
         .root {
-          display: flex;
-          flex-direction: column;
-          height: 100vh;
-          background: #050508;
-          color: #fff;
+          display: flex; flex-direction: column;
+          height: 100vh; background: #050508; color: #fff;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          overflow: hidden;
-          position: relative;
+          overflow: hidden; position: relative;
         }
-        .bg-glow {
-          position: fixed;
-          border-radius: 50%;
-          filter: blur(100px);
-          opacity: 0.12;
-          pointer-events: none;
-        }
-        .bg-glow1 { width: 500px; height: 500px; background: #7c3aed; top: -200px; left: -150px; }
-        .bg-glow2 { width: 400px; height: 400px; background: #2563eb; bottom: -150px; right: -100px; }
 
         /* Header */
         .header {
-          height: 56px;
-          min-height: 56px;
-          background: rgba(10,10,16,0.85);
+          height: 52px; min-height: 52px;
+          background: rgba(8,8,14,0.9);
           backdrop-filter: blur(16px);
-          -webkit-backdrop-filter: blur(16px);
           border-bottom: 1px solid rgba(255,255,255,0.07);
-          display: flex;
-          align-items: center;
+          display: flex; align-items: center;
           justify-content: space-between;
-          padding: 0 16px;
-          flex-shrink: 0;
-          z-index: 10;
-          position: relative;
-          gap: 12px;
+          padding: 0 16px; flex-shrink: 0; z-index: 10; gap: 10px;
         }
-        .header-left {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          overflow: hidden;
-          min-width: 0;
-        }
-        .header-brand {
-          font-weight: 700;
-          font-size: 0.95rem;
-          color: rgba(255,255,255,0.6);
-          white-space: nowrap;
-          flex-shrink: 0;
+        .header-left { display: flex; align-items: center; gap: 10px; overflow: hidden; }
+        .brand { font-weight: 700; font-size: 0.9rem; color: rgba(255,255,255,0.6); white-space: nowrap; flex-shrink: 0; }
+        .divider { width: 1px; height: 18px; background: rgba(255,255,255,0.1); flex-shrink: 0; }
+        .phase-label {
+          font-size: 0.82rem; color: #a855f7; font-weight: 600;
+          background: rgba(168,85,247,0.1); padding: 2px 10px;
+          border-radius: 6px; border: 1px solid rgba(168,85,247,0.25);
         }
         .diff-badge {
-          font-size: 0.65rem;
-          font-weight: 700;
-          padding: 2px 8px;
-          border-radius: 999px;
-          border: 1px solid;
-          letter-spacing: 0.5px;
-          flex-shrink: 0;
-        }
-        .question-title {
-          font-size: 0.9rem;
-          color: rgba(255,255,255,0.75);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          font-weight: 500;
-        }
-        .header-right {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          flex-shrink: 0;
-        }
-        .q-progress {
-          font-size: 0.8rem;
-          color: rgba(255,255,255,0.35);
-          white-space: nowrap;
-          padding: 4px 10px;
-          background: rgba(255,255,255,0.05);
-          border-radius: 8px;
-        }
-        .timer {
-          font-family: 'SF Mono', monospace;
-          font-size: 1rem;
-          font-weight: 700;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          white-space: nowrap;
-          transition: color 0.5s;
-        }
-        .expired-pill {
-          font-size: 0.6rem;
-          background: #f87171;
-          color: #000;
-          padding: 2px 6px;
-          border-radius: 4px;
-          font-weight: 800;
+          font-size: 0.62rem; font-weight: 700; padding: 2px 8px;
+          border-radius: 999px; border: 1px solid; flex-shrink: 0;
           letter-spacing: 0.5px;
         }
-        .lang-select {
-          background: rgba(255,255,255,0.06);
-          color: rgba(255,255,255,0.8);
-          border: 1px solid rgba(255,255,255,0.1);
-          padding: 5px 10px;
-          border-radius: 8px;
-          font-size: 0.85rem;
-          cursor: pointer;
-          backdrop-filter: blur(8px);
-          outline: none;
+        .q-title {
+          font-size: 0.88rem; color: rgba(255,255,255,0.7);
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
-        .lang-select:disabled { opacity: 0.35; cursor: not-allowed; }
+        .header-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+        .q-counter {
+          font-size: 0.78rem; color: rgba(255,255,255,0.3);
+          background: rgba(255,255,255,0.04); padding: 3px 10px; border-radius: 8px;
+        }
+        .coding-timer {
+          font-family: 'SF Mono', monospace; font-size: 0.95rem; font-weight: 700;
+          display: flex; align-items: center; gap: 5px; white-space: nowrap;
+        }
+        .expired-tag {
+          font-size: 0.58rem; background: #f87171; color: #000;
+          padding: 1px 5px; border-radius: 3px; font-weight: 800; letter-spacing: 0.5px;
+        }
+        .lang-sel {
+          background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.8);
+          border: 1px solid rgba(255,255,255,0.1); padding: 4px 8px;
+          border-radius: 7px; font-size: 0.82rem; cursor: pointer; outline: none;
+        }
+        .lang-sel:disabled { opacity: 0.3; cursor: not-allowed; }
         .submit-btn {
-          background: linear-gradient(135deg, #7c3aed, #a855f7);
-          color: #fff;
-          border: none;
-          padding: 7px 16px;
-          border-radius: 8px;
-          cursor: pointer;
-          font-weight: 700;
-          font-size: 0.85rem;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          white-space: nowrap;
-          transition: all 0.2s;
+          background: linear-gradient(135deg,#7c3aed,#a855f7);
+          color: #fff; border: none; padding: 6px 14px;
+          border-radius: 8px; cursor: pointer; font-weight: 700;
+          font-size: 0.82rem; display: flex; align-items: center; gap: 5px;
+          white-space: nowrap; transition: all 0.2s;
         }
         .submit-btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
-        .submit-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
-        .btn-inner { display: flex; align-items: center; gap: 8px; }
-        .spinner {
-          width: 13px; height: 13px;
-          border: 2px solid rgba(255,255,255,0.25);
-          border-top-color: #fff;
-          border-radius: 50%;
-          animation: spin 0.7s linear infinite;
-          display: inline-block;
+        .submit-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+        .spin-sm {
+          width: 12px; height: 12px;
+          border: 2px solid rgba(255,255,255,0.2); border-top-color: #fff;
+          border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block;
         }
 
         /* Workspace */
-        .workspace { flex: 1; overflow: hidden; min-height: 0; position: relative; }
+        .workspace { flex: 1; overflow: hidden; min-height: 0; }
 
-        /* Verbal screen */
-        .verbal-screen {
+        /* ====== VERBAL LAYOUT ====== */
+        .verbal-layout {
           height: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: rgba(5,5,8,0.5);
+          display: grid;
+          grid-template-columns: 1fr 1fr;
         }
-        .verbal-card {
-          background: rgba(255,255,255,0.04);
-          backdrop-filter: blur(24px);
-          -webkit-backdrop-filter: blur(24px);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 28px;
-          padding: 48px 56px;
-          display: flex;
-          align-items: center;
-          gap: 48px;
-          max-width: 780px;
-          width: 90%;
-          box-shadow: 0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.02) inset;
-        }
-        .verbal-info h2 {
-          font-size: 1.4rem;
-          font-weight: 700;
-          margin: 0 0 10px;
-          color: rgba(255,255,255,0.9);
-        }
-        .verbal-info p {
-          font-size: 0.9rem;
-          color: rgba(255,255,255,0.4);
-          line-height: 1.6;
-          margin: 0 0 24px;
-          max-width: 340px;
-        }
-        .verbal-steps { display: flex; flex-direction: column; gap: 12px; }
-        .step { display: flex; align-items: center; gap: 10px; }
-        .step-dot {
-          width: 26px; height: 26px;
-          border-radius: 50%;
-          background: rgba(255,255,255,0.06);
-          border: 1px solid rgba(255,255,255,0.1);
-          display: flex; align-items: center; justify-content: center;
-          font-size: 0.72rem;
-          color: rgba(255,255,255,0.3);
-          flex-shrink: 0;
-          font-weight: 700;
-        }
-        .step-dot.active { background: rgba(168,85,247,0.2); border-color: rgba(168,85,247,0.5); color: #c084fc; }
-        .step-dot.done  { background: rgba(74,222,128,0.15); border-color: rgba(74,222,128,0.4); color: #4ade80; }
-        .step-label { font-size: 0.88rem; color: rgba(255,255,255,0.4); }
-        .step-active { color: rgba(255,255,255,0.85) !important; font-weight: 600; }
 
-        /* Coding area */
-        .coding-area { display: flex; height: 100%; }
-        .problem-panel {
-          width: 38%;
-          min-width: 280px;
-          max-width: 440px;
-          background: rgba(255,255,255,0.025);
-          backdrop-filter: blur(12px);
-          border-right: 1px solid rgba(255,255,255,0.07);
-          padding: 24px;
-          overflow-y: auto;
+        /* LEFT — Interviewer */
+        .interviewer-panel {
+          background: rgba(8,8,14,0.6);
+          border-right: 1px solid rgba(255,255,255,0.06);
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          padding: 32px 40px; gap: 24px; position: relative;
+        }
+
+        /* Difficulty progress */
+        .diff-progress-wrap {
+          width: 100%; max-width: 320px;
+        }
+        .diff-progress-bar {
+          width: 100%; height: 4px;
+          background: rgba(255,255,255,0.07);
+          border-radius: 2px; overflow: hidden; margin-bottom: 8px;
+        }
+        .diff-progress-fill {
+          height: 100%; border-radius: 2px;
+          transition: width 0.8s ease, background 0.5s ease;
+        }
+        .diff-progress-labels {
+          display: flex; justify-content: space-between;
+        }
+
+        /* Avatar */
+        .avatar-section { display: flex; align-items: center; justify-content: center; }
+        .interviewer-status {
+          font-size: 0.82rem; min-height: 20px;
+          text-align: center;
+        }
+
+        /* RIGHT — Candidate */
+        .candidate-panel {
+          display: flex; flex-direction: column;
+          padding: 24px; gap: 16px; overflow-y: auto;
+          background: rgba(5,5,8,0.4);
+        }
+        .camera-section { flex-shrink: 0; }
+        .interview-steps { display: flex; flex-direction: column; gap: 8px; }
+        .steps-title {
+          font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;
+          color: rgba(255,255,255,0.25); margin: 0 0 8px; font-weight: 500;
+        }
+        .step-item {
+          display: flex; align-items: center; gap: 10px;
+          padding: 10px 12px; border-radius: 10px;
+          border: 1px solid rgba(255,255,255,0.05);
+          background: rgba(255,255,255,0.02);
+          transition: all 0.3s; position: relative;
+        }
+        .step-item.active {
+          border-color: rgba(168,85,247,0.35);
+          background: rgba(168,85,247,0.06);
+        }
+        .step-item.done {
+          border-color: rgba(74,222,128,0.2);
+          background: rgba(74,222,128,0.04);
+          opacity: 0.7;
+        }
+        .step-item.locked { opacity: 0.35; }
+        .step-dot {
+          width: 26px; height: 26px; border-radius: 50%;
+          background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+          display: flex; align-items: center; justify-content: center;
+          font-size: 0.7rem; color: rgba(255,255,255,0.3);
+          flex-shrink: 0; font-weight: 700;
+        }
+        .step-item.active  .step-dot { background: rgba(168,85,247,0.2); border-color: rgba(168,85,247,0.5); color: #c084fc; }
+        .step-item.done    .step-dot { background: rgba(74,222,128,0.15); border-color: rgba(74,222,128,0.4); color: #4ade80; }
+        .step-body { flex: 1; min-width: 0; }
+        .step-label {
+          font-size: 0.85rem; color: rgba(255,255,255,0.7); font-weight: 500;
+        }
+        .step-item.active .step-label { color: rgba(255,255,255,0.9); }
+        .step-desc { font-size: 0.72rem; color: rgba(255,255,255,0.25); margin-top: 1px; }
+        .step-active-pill {
+          font-size: 0.6rem; font-weight: 800; letter-spacing: 0.5px;
+          background: rgba(168,85,247,0.25); color: #d8b4fe;
+          padding: 2px 7px; border-radius: 4px;
+          border: 1px solid rgba(168,85,247,0.3);
           flex-shrink: 0;
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
         }
-        .problem-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          border-bottom: 1px solid rgba(255,255,255,0.06);
-          padding-bottom: 12px;
+        .tip-box {
+          background: rgba(96,165,250,0.06); border: 1px solid rgba(96,165,250,0.15);
+          border-radius: 10px; padding: 10px 12px;
+          font-size: 0.78rem; color: rgba(255,255,255,0.45);
+          display: flex; gap: 8px; align-items: flex-start;
+          flex-shrink: 0;
         }
-        .problem-header h3 { margin: 0; font-size: 1rem; font-weight: 700; color: rgba(255,255,255,0.85); }
-        .problem-diff { font-size: 0.78rem; font-weight: 600; text-transform: capitalize; }
-        .problem-desc { font-size: 0.9rem; color: rgba(255,255,255,0.6); line-height: 1.75; margin: 0; }
+        .tip-icon { flex-shrink: 0; font-size: 0.85rem; }
+
+        /* ====== CODING LAYOUT ====== */
+        .coding-layout { display: flex; height: 100%; }
+        .problem-panel {
+          width: 38%; min-width: 260px; max-width: 420px;
+          background: rgba(255,255,255,0.02);
+          border-right: 1px solid rgba(255,255,255,0.06);
+          padding: 20px; overflow-y: auto; flex-shrink: 0;
+          display: flex; flex-direction: column; gap: 14px;
+        }
+        .problem-head {
+          display: flex; align-items: center; justify-content: space-between;
+          border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 10px;
+        }
+        .problem-title { font-size: 0.95rem; font-weight: 700; color: rgba(255,255,255,0.85); }
+        .problem-desc { font-size: 0.88rem; color: rgba(255,255,255,0.55); line-height: 1.75; margin: 0; }
         .example-box {
-          background: rgba(255,255,255,0.04);
+          background: rgba(255,255,255,0.03);
           border: 1px solid rgba(255,255,255,0.07);
-          border-radius: 12px;
-          padding: 14px 16px;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
+          border-radius: 10px; padding: 12px 14px;
         }
-        .example-label {
-          font-size: 0.72rem;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 0.8px;
-          color: rgba(255,255,255,0.3);
-          margin-bottom: 4px;
+        .example-head {
+          font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.8px;
+          color: rgba(255,255,255,0.25); margin-bottom: 8px; font-weight: 700;
         }
-        .example-row { display: flex; align-items: baseline; gap: 8px; }
-        .example-key { font-size: 0.8rem; color: rgba(255,255,255,0.3); min-width: 50px; }
-        .example-row code {
-          font-family: 'Fira Code', 'Cascadia Code', monospace;
-          font-size: 0.82rem;
-          color: rgba(255,255,255,0.75);
-          background: rgba(255,255,255,0.05);
-          padding: 2px 8px;
-          border-radius: 6px;
+        .example-case { display: flex; flex-direction: column; gap: 4px; }
+        .case-row { display: flex; align-items: baseline; gap: 8px; }
+        .case-key { font-size: 0.78rem; color: rgba(255,255,255,0.25); min-width: 52px; }
+        .case-row code {
+          font-family: 'Fira Code', monospace; font-size: 0.8rem;
+          color: rgba(255,255,255,0.7);
+          background: rgba(255,255,255,0.05); padding: 1px 6px; border-radius: 4px;
         }
-        .expired-notice {
-          background: rgba(248,113,113,0.08);
-          border: 1px solid rgba(248,113,113,0.2);
-          color: #fca5a5;
-          padding: 10px 14px;
-          border-radius: 10px;
-          font-size: 0.85rem;
-          line-height: 1.5;
+        .case-divider { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 8px 0; }
+        .expired-banner {
+          background: rgba(248,113,113,0.07); border: 1px solid rgba(248,113,113,0.2);
+          color: #fca5a5; padding: 8px 12px; border-radius: 8px; font-size: 0.82rem;
         }
-        .q-dots {
-          display: flex;
-          gap: 8px;
-          margin-top: auto;
-          padding-top: 8px;
-        }
+        .q-dots { display: flex; align-items: center; gap: 8px; }
         .q-dot {
-          width: 10px; height: 10px;
-          border-radius: 50%;
-          background: rgba(255,255,255,0.1);
-          border: 1px solid rgba(255,255,255,0.15);
+          width: 9px; height: 9px; border-radius: 50%;
+          background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15);
           transition: all 0.3s;
         }
-        .q-done    { background: rgba(74,222,128,0.4);  border-color: #4ade80; }
-        .q-current { background: rgba(168,85,247,0.5); border-color: #a855f7; }
-
-        /* Editor */
+        .q-done { background: rgba(74,222,128,0.4); border-color: #4ade80; }
+        .q-cur  { background: rgba(168,85,247,0.5); border-color: #a855f7; }
+        .q-dot-label { font-size: 0.72rem; color: rgba(255,255,255,0.25); margin-left: 2px; }
+        .coding-camera { margin-top: auto; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.05); }
         .editor-panel { flex: 1; overflow: hidden; min-width: 0; }
 
         @keyframes spin { to { transform: rotate(360deg); } }
 
         @media (max-width: 768px) {
-          .verbal-card { flex-direction: column; padding: 32px 24px; gap: 32px; }
-          .verbal-info p { max-width: 100%; }
-          .problem-panel { width: 100%; max-width: 100%; height: 40%; border-right: none; border-bottom: 1px solid rgba(255,255,255,0.07); }
-          .coding-area { flex-direction: column; }
+          .verbal-layout { grid-template-columns: 1fr; }
+          .interviewer-panel { border-right: none; border-bottom: 1px solid rgba(255,255,255,0.06); padding: 24px; }
+          .coding-layout { flex-direction: column; }
+          .problem-panel { width: 100%; max-width: 100%; height: 40%; border-right: none; border-bottom: 1px solid rgba(255,255,255,0.06); }
         }
       `}</style>
     </div>
