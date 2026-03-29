@@ -107,23 +107,26 @@ class MockAIService {
   async generateVerbalResponse(
     history: { role: string; content: string }[],
     _userMessage: string,
-  ): Promise<{ text: string; action?: string }> {
+  ): Promise<{ text: string; action?: string; difficulty_level: 'warmup' | 'easy' | 'medium' | 'hard' }> {
     const turn = history.length;
     if (turn === 0) {
       return {
         text: "[MOCK] Hello! I'm your AI interviewer. Can you explain what a hash map is and when you would use one?",
         action: 'CONTINUE',
+        difficulty_level: 'warmup',
       };
     }
     if (turn <= 2) {
       return {
         text: '[MOCK] Great answer! One follow-up: what is the time complexity of a lookup in a hash map?',
         action: 'CONTINUE',
+        difficulty_level: 'easy',
       };
     }
     return {
       text: "[MOCK] Excellent! You've demonstrated solid understanding of data structures. Let's move on to the coding challenge.",
       action: 'START_CODING',
+      difficulty_level: 'medium',
     };
   }
 

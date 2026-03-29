@@ -5,8 +5,7 @@ import ErrorBoundary from '../components/ErrorBoundary';
 
 export default function App({ Component, pageProps }: AppProps) {
   return (
-    // 👇 This wrapper is CRITICAL. It enables authentication for every page.
-    <ClerkProvider {...pageProps}>
+    <ClerkProvider>
       <ErrorBoundary>
         <Component {...pageProps} />
       </ErrorBoundary>
