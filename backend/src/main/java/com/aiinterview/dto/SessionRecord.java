@@ -19,6 +19,7 @@ public class SessionRecord {
 
     private String id;
     private String difficulty;
+    private String domain;
     private Instant startTime;
     private List<DSAQuestion> questions;
     private int currentQuestionIndex;

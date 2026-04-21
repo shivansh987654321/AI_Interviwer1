@@ -168,10 +168,11 @@ public class InterviewController {
                 return ResponseEntity.badRequest().body(Map.of("error", "difficulty must be easy, medium, or hard"));
             }
             String userId = body.get("userId") instanceof String s ? s : null;
+            String domain  = body.get("domain")  instanceof String d ? d : "dsa";
 
             String sessionId = UUID.randomUUID().toString();
             int duration = SessionRecord.getDurationForDifficulty(difficulty);
-            log.info("[CREATE] Session: {} | Difficulty: {}", sessionId, difficulty);
+            log.info("[CREATE] Session: {} | Difficulty: {} | Domain: {}", sessionId, difficulty, domain);
 
             List<DSAQuestion> questions = sessionService.generateQuestions(aiService, difficulty, 3);
             DSAQuestion first = questions.get(0);
@@ -179,6 +180,7 @@ public class InterviewController {
             SessionRecord session = SessionRecord.builder()
                     .id(sessionId)
                     .difficulty(difficulty)
+                    .domain(domain)
                     .startTime(Instant.now())
                     .questions(questions)
                     .currentQuestionIndex(0)
@@ -192,8 +194,12 @@ public class InterviewController {
 
             sessionService.saveSession(session);
 
-            return ResponseEntity.status(HttpStatus.CREATED)
-                    .body(Map.of("sessionId", sessionId, "question", first, "duration", duration));
+            return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+                    "sessionId", sessionId,
+                    "question", first,
+                    "duration", duration,
+                    "executionEnabled", true,
+                    "supportedLanguages", List.of("javascript", "python", "java", "cpp")));
 
         } catch (Exception e) {
             log.error("[CREATE] Error: {}", e.getMessage());
@@ -242,28 +248,40 @@ public class InterviewController {
             scoreEntry.put("submittedAt", Instant.now().toString());
             session.getScoresSafe().add(scoreEntry);
 
-            Map<String, Object> response = new HashMap<>();
-            response.put("score",       result.getScore());
-            response.put("verdict",     result.getVerdict());
-            response.put("feedback",    result.getFeedback());
-            response.put("improvements", result.getImprovements());
-
             boolean passing = result.getScore() >= 60 || "Accepted".equals(result.getVerdict());
+            List<Map<String, Object>> caseResults = buildCaseResults(session.getQuestion(), result);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("mode",             "submit");
+            response.put("score",            result.getScore());
+            response.put("verdict",          result.getVerdict());
+            response.put("feedback",         result.getFeedback());
+            response.put("improvements",     result.getImprovements());
+            response.put("passed",           passing);
+            response.put("allPublicPassed",  passing);
+            response.put("caseResults",      caseResults);
+            response.put("passedPublicCases",  passing ? caseResults.size() : 0);
+            response.put("totalPublicCases",   caseResults.size());
+            response.put("passedHiddenCases",  0);
+            response.put("totalHiddenCases",   0);
+            response.put("questionTitle",    session.getQuestion().getTitle());
+            response.put("questionIndex",    session.getCurrentQuestionIndex());
+
             if (passing) {
                 int nextIndex = session.getCurrentQuestionIndex() + 1;
                 if (nextIndex < session.getQuestions().size()) {
                     session.setCurrentQuestionIndex(nextIndex);
                     session.setQuestion(session.getQuestions().get(nextIndex));
-                    response.put("nextQuestion",   session.getQuestion());
-                    response.put("questionIndex",  nextIndex);
-                    response.put("message", "Correct! Moving to the next question\u2026");
+                    response.put("nextQuestion",  session.getQuestion());
+                    response.put("questionIndex", nextIndex);
+                    response.put("message", "Accepted! Moving to the next question\u2026");
                 } else {
                     session.setStatus("completed");
                     response.put("completed", true);
-                    response.put("message", "All questions completed!");
+                    response.put("message",   "All questions completed!");
                 }
             } else {
-                response.put("message", "Score " + result.getScore() + "/100 \u2014 keep trying!");
+                response.put("message", "Score " + result.getScore() + "/100 — keep trying!");
             }
 
             sessionService.saveSession(session);
@@ -273,6 +291,59 @@ public class InterviewController {
             log.error("[SUBMIT] Error: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Code evaluation failed"));
+        }
+    }
+
+    // ===========================================================================
+    // 2b. RUN CODE — evaluate without advancing question (sample test run)
+    // ===========================================================================
+    @PostMapping("/run")
+    public ResponseEntity<?> runCode(@RequestBody Map<String, Object> body) {
+        try {
+            String sessionId = (String) body.get("sessionId");
+            String code      = (String) body.get("code");
+            String language  = (String) body.get("language");
+            String userId    = body.get("userId") instanceof String s ? s : null;
+
+            if (sessionId == null || code == null || language == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Missing: sessionId, code, language"));
+            }
+
+            Optional<SessionRecord> sessionOpt = sessionService.getSession(sessionId);
+            if (sessionOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Session not found"));
+            }
+            SessionRecord session = sessionOpt.get();
+
+            if (session.getUserId() != null && userId != null && !session.getUserId().equals(userId)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "Unauthorized"));
+            }
+
+            EvaluationResult result = aiService.evaluateCode(session.getQuestion(), code, language);
+            boolean allPassed = result.getScore() >= 60 || "Accepted".equals(result.getVerdict());
+            List<Map<String, Object>> caseResults = buildCaseResults(session.getQuestion(), result);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("mode",             "run");
+            response.put("score",            result.getScore());
+            response.put("verdict",          result.getVerdict());
+            response.put("feedback",         result.getFeedback());
+            response.put("passed",           allPassed);
+            response.put("allPublicPassed",  allPassed);
+            response.put("caseResults",      caseResults);
+            response.put("passedPublicCases",  allPassed ? caseResults.size() : 0);
+            response.put("totalPublicCases",   caseResults.size());
+            response.put("passedHiddenCases",  0);
+            response.put("totalHiddenCases",   0);
+            response.put("questionTitle",    session.getQuestion().getTitle());
+            response.put("questionIndex",    session.getCurrentQuestionIndex());
+            response.put("message",          allPassed ? "All sample test cases passed." : "Some test cases failed — check your logic.");
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("[RUN] Error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Code run failed"));
         }
     }
 
@@ -364,5 +435,44 @@ public class InterviewController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to fetch history"));
         }
+    }
+
+    // ===========================================================================
+    // HELPER — build JudgeResult-style caseResults from AI evaluation
+    // ===========================================================================
+    private List<Map<String, Object>> buildCaseResults(DSAQuestion question, EvaluationResult result) {
+        boolean passed = result.getScore() >= 60 || "Accepted".equals(result.getVerdict());
+        List<DSAQuestion.TestCase> testCases = question.getTestCases();
+        if (testCases == null || testCases.isEmpty()) {
+            Map<String, Object> single = new HashMap<>();
+            single.put("testCaseId",     "tc-1");
+            single.put("label",          "Sample");
+            single.put("hidden",         false);
+            single.put("passed",         passed);
+            single.put("verdict",        result.getVerdict());
+            single.put("runtimeMs",      null);
+            single.put("memoryKb",       null);
+            single.put("actualOutput",   null);
+            single.put("expectedOutput", null);
+            single.put("stderr",         null);
+            return List.of(single);
+        }
+        List<Map<String, Object>> cases = new ArrayList<>();
+        for (int i = 0; i < testCases.size(); i++) {
+            DSAQuestion.TestCase tc = testCases.get(i);
+            Map<String, Object> cr = new HashMap<>();
+            cr.put("testCaseId",     "tc-" + (i + 1));
+            cr.put("label",          "Case " + (i + 1));
+            cr.put("hidden",         false);
+            cr.put("passed",         passed);
+            cr.put("verdict",        result.getVerdict());
+            cr.put("runtimeMs",      null);
+            cr.put("memoryKb",       null);
+            cr.put("actualOutput",   passed ? tc.getOutput() : null);
+            cr.put("expectedOutput", tc.getOutput());
+            cr.put("stderr",         null);
+            cases.add(cr);
+        }
+        return cases;
     }
 }
