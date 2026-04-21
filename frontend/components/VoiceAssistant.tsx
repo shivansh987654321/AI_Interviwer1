@@ -79,7 +79,10 @@ export default function VoiceAssistant({
   const onSocketReadyRef    = useRef(onSocketReady);
   const onDifficultyRef     = useRef(onDifficultyChange);
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || apiEndpoint;
+  const apiUrl    = process.env.NEXT_PUBLIC_API_URL    || apiEndpoint;
+  // Java backend runs Socket.IO on a separate port (5002) via netty-socketio.
+  // Falls back to apiUrl so the single-port Node setup still works if needed.
+  const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || apiUrl;
 
   useEffect(() => { aiStateRef.current = aiState; }, [aiState]);
   useEffect(() => { queueLengthRef.current = speechQueue.length; }, [speechQueue]);
@@ -130,7 +133,7 @@ export default function VoiceAssistant({
     setConnectionStatus('connecting');
     if (socketRef.current) socketRef.current.disconnect();
 
-    const socket = io(apiUrl, {
+    const socket = io(socketUrl, {
       withCredentials: true,
       transports: ['polling', 'websocket'], // polling first avoids noisy WS failure on initial connect
       reconnectionAttempts: 5,
