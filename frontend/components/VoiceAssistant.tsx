@@ -1,6 +1,7 @@
 // components/VoiceAssistant.tsx
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
+import axios from 'axios';
 
 interface VoiceAssistantProps {
   sessionId: string;
@@ -16,6 +17,12 @@ interface VoiceAssistantProps {
 
 type AIState = 'IDLE' | 'LISTENING' | 'THINKING' | 'SPEAKING' | 'ERROR';
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
+
+interface ChatMessage {
+  role: 'user' | 'ai';
+  text: string;
+  id: number;
+}
 
 interface ReportCard {
   score: number;
@@ -55,24 +62,34 @@ export default function VoiceAssistant({
   const [verbalTimerActive, setVerbalTimerActive] = useState(false);
   const [silenceSeconds, setSilenceSeconds]       = useState(0);
   const [waveHeights, setWaveHeights]             = useState([4, 4, 4, 4, 4]);
+  const [chatMessages, setChatMessages]           = useState<ChatMessage[]>([]);
+  const [chatExpanded, setChatExpanded]           = useState(true);
 
-  const aiStateRef       = useRef<AIState>('IDLE');
-  const isSpeakingRef    = useRef(false);
-  const isRecordingRef   = useRef(false);
-  const socketRef        = useRef<Socket | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef   = useRef<Blob[]>([]);
-  const silenceTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const silencePollRef   = useRef<ReturnType<typeof setInterval> | null>(null);
-  const streamRef        = useRef<MediaStream | null>(null);
-  const queueLengthRef   = useRef(0);
-  const verbalTimerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
-  const silenceCountRef  = useRef(0);
-  const waveRafRef       = useRef<number | null>(null);
-  const analyserRef      = useRef<AnalyserNode | null>(null);
-  const audioCtxRef      = useRef<AudioContext | null>(null);
-  // ref for currently playing TTS audio (ElevenLabs / OpenAI)
-  const audioRef         = useRef<HTMLAudioElement | null>(null);
+  // --- refs ---
+  const aiStateRef        = useRef<AIState>('IDLE');
+  const isSpeakingRef     = useRef(false);
+  const isRecordingRef    = useRef(false);
+  const socketRef         = useRef<Socket | null>(null);
+  const mediaRecorderRef  = useRef<MediaRecorder | null>(null);
+  const audioChunksRef    = useRef<Blob[]>([]);
+  const silenceTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const silencePollRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const streamRef         = useRef<MediaStream | null>(null);
+  const queueLengthRef    = useRef(0);
+  const verbalTimerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const silenceCountRef   = useRef(0);
+  const waveRafRef        = useRef<number | null>(null);
+  const analyserRef       = useRef<AnalyserNode | null>(null);
+  const audioCtxRef       = useRef<AudioContext | null>(null);
+  const recognitionRef    = useRef<any>(null);
+  const msgIdRef          = useRef(0);
+  const chatEndRef        = useRef<HTMLDivElement | null>(null);
+  const pendingTxRef      = useRef('');         // accumulates Web Speech final results
+  const verbalTimeLeftRef = useRef(VERBAL_DURATION_SECONDS);
+  const isEndingRef       = useRef(false);
+  const reportDataRef     = useRef<ReportCard | null>(null);
+  // forward-ref so speakText can call startListening without a circular dep
+  const startListeningRef = useRef<() => void>(() => {});
 
   const onCodingStartRef    = useRef(onCodingStart);
   const onSpeakingChangeRef = useRef(onSpeakingChange);
@@ -81,18 +98,25 @@ export default function VoiceAssistant({
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || apiEndpoint;
 
+  // keep refs in sync
   useEffect(() => { aiStateRef.current = aiState; }, [aiState]);
   useEffect(() => { queueLengthRef.current = speechQueue.length; }, [speechQueue]);
+  useEffect(() => { verbalTimeLeftRef.current = verbalTimeLeft; }, [verbalTimeLeft]);
+  useEffect(() => { isEndingRef.current = isEnding; }, [isEnding]);
+  useEffect(() => { reportDataRef.current = reportData; }, [reportData]);
   useEffect(() => { onCodingStartRef.current = onCodingStart; }, [onCodingStart]);
   useEffect(() => { onSpeakingChangeRef.current = onSpeakingChange; }, [onSpeakingChange]);
   useEffect(() => { onSocketReadyRef.current = onSocketReady; }, [onSocketReady]);
   useEffect(() => { onDifficultyRef.current = onDifficultyChange; }, [onDifficultyChange]);
 
   useEffect(() => {
-    if (onSpeakingChangeRef.current) {
-      onSpeakingChangeRef.current(aiState === 'SPEAKING');
-    }
+    if (onSpeakingChangeRef.current) onSpeakingChangeRef.current(aiState === 'SPEAKING');
   }, [aiState]);
+
+  // auto-scroll chat to newest message
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
 
   // ------------------------------------------------------------------
   // VERBAL TIMER
@@ -132,7 +156,7 @@ export default function VoiceAssistant({
 
     const socket = io(apiUrl, {
       withCredentials: true,
-      transports: ['polling', 'websocket'], // polling first avoids noisy WS failure on initial connect
+      transports: ['polling', 'websocket'],
       reconnectionAttempts: 5,
       auth: userId ? { userId } : {},
     });
@@ -151,6 +175,8 @@ export default function VoiceAssistant({
 
     socket.on('ai_speak', (data: { text: string; difficulty_level?: string; time_remaining_seconds?: number }) => {
       setTranscript(''); setLiveTranscript('');
+      // Add AI message to chat
+      setChatMessages(prev => [...prev, { role: 'ai', text: data.text, id: msgIdRef.current++ }]);
       setSpeechQueue(prev => {
         const next = [...prev, data.text];
         queueLengthRef.current = next.length;
@@ -232,19 +258,15 @@ export default function VoiceAssistant({
   }, []);
 
   // ------------------------------------------------------------------
-  // STOP SPEAKING — OpenAI TTS audio
+  // STOP SPEAKING
   // ------------------------------------------------------------------
   const stopSpeaking = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = '';
-      audioRef.current = null;
-    }
+    window.speechSynthesis?.cancel();
     isSpeakingRef.current = false;
   }, []);
 
   // ------------------------------------------------------------------
-  // MICROPHONE
+  // MICROPHONE (for MediaRecorder fallback)
   // ------------------------------------------------------------------
   const initMicrophone = useCallback(async () => {
     if (streamRef.current) return streamRef.current;
@@ -260,20 +282,128 @@ export default function VoiceAssistant({
   }, []);
 
   // ------------------------------------------------------------------
-  // STOP LISTENING
+  // STOP LISTENING (both Web Speech and MediaRecorder)
   // ------------------------------------------------------------------
   const stopListening = useCallback(() => {
-    if (silenceTimerRef.current)  { clearTimeout(silenceTimerRef.current);  silenceTimerRef.current  = null; }
-    if (silencePollRef.current)   { clearInterval(silencePollRef.current);   silencePollRef.current   = null; }
-    if (mediaRecorderRef.current?.state !== 'inactive') mediaRecorderRef.current?.stop();
+    if (recognitionRef.current) {
+      try { recognitionRef.current.abort(); } catch { /* ignore */ }
+      recognitionRef.current = null;
+    }
+    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+    if (silencePollRef.current)  { clearInterval(silencePollRef.current);  silencePollRef.current  = null; }
+    if (mediaRecorderRef.current?.state !== 'inactive') {
+      try { mediaRecorderRef.current?.stop(); } catch { /* ignore */ }
+    }
     stopWaveform();
   }, [stopWaveform]);
 
   // ------------------------------------------------------------------
-  // START LISTENING
+  // HANDLE USER SPEECH — common path after STT resolves
   // ------------------------------------------------------------------
-  const startListening = useCallback(async () => {
-    if (isEnding || reportData) return;
+  const handleUserSpeech = useCallback((rawText: string) => {
+    const text = rawText.trim();
+    // Noise filter: reject fragments under 2 words or 8 chars
+    if (!text || text.split(/\s+/).filter(Boolean).length < 2 || text.length < 8) {
+      setAiState('IDLE');
+      setTimeout(() => startListeningRef.current(), 400);
+      return;
+    }
+    setTranscript(text);
+    setStatusMessage('Thinking...');
+    setAiState('THINKING');
+    // Add user message to chat
+    setChatMessages(prev => [...prev, { role: 'user', text, id: msgIdRef.current++ }]);
+    silenceCountRef.current = 0;
+
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('user_speak', {
+        text,
+        sessionId,
+        timeRemaining: verbalTimeLeftRef.current,
+      });
+    }
+  }, [sessionId]);
+
+  // ------------------------------------------------------------------
+  // WEB SPEECH API — primary fast path (~0ms STT delay)
+  // ------------------------------------------------------------------
+  const startWebSpeech = useCallback(() => {
+    if (isEndingRef.current || reportDataRef.current) return;
+    if (isSpeakingRef.current || aiStateRef.current === 'THINKING' || queueLengthRef.current > 0) return;
+    if (recognitionRef.current) return;
+
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      // Browser doesn't support Web Speech — fall back to MediaRecorder
+      startListeningRef.current();
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;      // one utterance per turn
+    recognition.interimResults = true;   // show live text
+    recognition.lang = 'en-US';
+    recognition.maxAlternatives = 1;
+    recognitionRef.current = recognition;
+    pendingTxRef.current = '';
+
+    setAiState('LISTENING');
+    setStatusMessage('Listening...');
+
+    recognition.onresult = (event: any) => {
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          pendingTxRef.current += ' ' + event.results[i][0].transcript;
+        } else {
+          interim += event.results[i][0].transcript;
+        }
+      }
+      if (interim) setLiveTranscript(interim);
+    };
+
+    recognition.onend = () => {
+      recognitionRef.current = null;
+      const text = pendingTxRef.current.trim();
+      pendingTxRef.current = '';
+      setLiveTranscript('');
+      if (text) {
+        handleUserSpeech(text);
+      } else {
+        setAiState('IDLE');
+        setTimeout(() => startListeningRef.current(), 400);
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      recognitionRef.current = null;
+      pendingTxRef.current = '';
+      setLiveTranscript('');
+      if (event.error === 'no-speech') {
+        // restart silently
+        setTimeout(() => startListeningRef.current(), 300);
+      } else if (event.error !== 'aborted') {
+        // unknown error — fall back to MediaRecorder
+        startListeningRef.current();
+      }
+    };
+
+    try {
+      recognition.start();
+    } catch {
+      recognitionRef.current = null;
+      startListeningRef.current();
+    }
+  }, [handleUserSpeech]);
+
+  // ------------------------------------------------------------------
+  // MEDIARECORDER — fallback for non-Chrome / when Web Speech fails
+  // Silence detection cut from 2s → 0.6s for fast response
+  // ------------------------------------------------------------------
+  const startMediaRecorder = useCallback(async () => {
+    if (isEndingRef.current || reportDataRef.current) return;
     if (isSpeakingRef.current || aiStateRef.current === 'THINKING' || queueLengthRef.current > 0) return;
     if (isRecordingRef.current) return;
 
@@ -284,10 +414,9 @@ export default function VoiceAssistant({
     audioChunksRef.current = [];
 
     const baseMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-      ? 'audio/webm;codecs=opus' 
-      : MediaRecorder.isTypeSupported('audio/mp4') 
-        ? 'audio/mp4' 
-        : 'audio/webm';
+      ? 'audio/webm;codecs=opus'
+      : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm';
+
     const recorder = new MediaRecorder(stream, { mimeType: baseMime });
     mediaRecorderRef.current = recorder;
 
@@ -297,8 +426,10 @@ export default function VoiceAssistant({
       isRecordingRef.current = false;
       stopWaveform();
       const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType });
-
-      if (audioBlob.size < 1000) { setTimeout(() => startListening(), 300); return; }
+      if (audioBlob.size < 1000) {
+        setTimeout(() => startListeningRef.current(), 300);
+        return;
+      }
 
       setAiState('THINKING');
       setStatusMessage('Transcribing...');
@@ -308,24 +439,14 @@ export default function VoiceAssistant({
         const formData = new FormData();
         const ext = recorder.mimeType.includes('mp4') ? 'mp4' : 'webm';
         formData.append('audio', audioBlob, `recording.${ext}`);
-        const res = await fetch(`${apiUrl}/api/interview/stt`, { method: 'POST', body: formData });
-        if (!res.ok) throw new Error(`STT failed: ${res.status}`);
-        const data = await res.json();
-        const text = data.text?.trim();
-
-        if (!text) { setAiState('IDLE'); setTimeout(() => startListening(), 300); return; }
-
-        setTranscript(text);
-        setStatusMessage('Thinking...');
-        silenceCountRef.current = 0;
-
-        if (socketRef.current?.connected) {
-          socketRef.current.emit('user_speak', { text, sessionId, timeRemaining: verbalTimeLeft });
-        }
+        const res = await axios.post(`${apiUrl}/api/interview/stt`, formData);
+        const text = res.data.text?.trim();
+        if (!text) { setAiState('IDLE'); setTimeout(() => startListeningRef.current(), 300); return; }
+        handleUserSpeech(text);
       } catch {
         setStatusMessage('Transcription failed — retrying...');
         setAiState('IDLE');
-        setTimeout(() => startListening(), 1000);
+        setTimeout(() => startListeningRef.current(), 1000);
       }
     };
 
@@ -333,95 +454,77 @@ export default function VoiceAssistant({
     isRecordingRef.current = true;
     setAiState('LISTENING');
     setStatusMessage('Listening...');
-    setLiveTranscript('');
 
-    // ----------------------------------------------------------------
-    // Voice-activity-aware silence detection
-    //
-    // Instead of a fixed cutoff timer, we poll the audio analyser every
-    // 200ms.  While the user is speaking (RMS above threshold) the
-    // silence counter resets.  Only after SILENCE_LIMIT consecutive
-    // quiet polls AND at least MIN_SPEECH_MS has elapsed do we stop.
-    // MAX_DURATION_MS is the absolute hard cap.
-    // ----------------------------------------------------------------
-    const SILENCE_LIMIT   = 15;   // ~3 s of continuous silence (15 × 200 ms)
-    const MIN_SPEECH_MS   = 2000; // don't cut off before 2 s have elapsed
-    const MAX_DURATION_MS = 45000; // hard cap: 45 s max per turn
-    const SPEECH_THRESHOLD = 8;   // RMS value (0-255) considered "voice"
-
+    // Silence detection: 0.6s after speech → stop (was 2s before)
+    const SILENCE_LIMIT   = 5;     // 1s of no speech at all
+    const MIN_SPEECH_MS   = 1500;
+    const MAX_DURATION_MS = 30000;
+    const SPEECH_THRESHOLD = 8;
     const recordingStart = Date.now();
     let silentPolls = 0;
     let userSpokeAtLeastOnce = false;
 
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    const hardCap = setTimeout(() => { if (isRecordingRef.current) stopListening(); }, MAX_DURATION_MS);
+    silenceTimerRef.current = hardCap;
 
-    // Absolute hard-cap timer
-    const hardCapTimer = setTimeout(() => {
-      if (isRecordingRef.current) stopListening();
-    }, MAX_DURATION_MS);
-    silenceTimerRef.current = hardCapTimer;
-
-    const pollInterval = setInterval(() => {
-      if (!isRecordingRef.current) { clearInterval(pollInterval); silencePollRef.current = null; return; }
-
+    const poll = setInterval(() => {
+      if (!isRecordingRef.current) { clearInterval(poll); silencePollRef.current = null; return; }
       const elapsed = Date.now() - recordingStart;
-
-      // Read current audio level from the analyser (already running for waveform)
       let rms = 0;
       if (analyserRef.current) {
         const buf = new Uint8Array(analyserRef.current.frequencyBinCount);
         analyserRef.current.getByteFrequencyData(buf);
-        const sum = buf.reduce((a, b) => a + b, 0);
-        rms = sum / buf.length;
+        rms = buf.reduce((a, b) => a + b, 0) / buf.length;
       }
+      if (rms > SPEECH_THRESHOLD) { silentPolls = 0; userSpokeAtLeastOnce = true; }
+      else silentPolls++;
 
-      if (rms > SPEECH_THRESHOLD) {
-        // User is speaking — reset silence counter
-        silentPolls = 0;
-        userSpokeAtLeastOnce = true;
-      } else {
-        silentPolls++;
-      }
+      // Stop 0.6s (3 polls) after user goes quiet — was 2s (10 polls) before
+      const spokeThenQuiet = userSpokeAtLeastOnce && silentPolls >= 3;
+      const longSilence    = silentPolls >= SILENCE_LIMIT;
 
-      // Stop when: past minimum time AND (long silence OR user spoke then went quiet)
-      const longEnough = elapsed >= MIN_SPEECH_MS;
-      const silenceDetected = silentPolls >= SILENCE_LIMIT;
-      const spokeThenQuiet  = userSpokeAtLeastOnce && silentPolls >= 10; // ~2 s quiet after speech
-
-      if (longEnough && (silenceDetected || spokeThenQuiet)) {
-        clearInterval(pollInterval);
+      if (elapsed >= MIN_SPEECH_MS && (spokeThenQuiet || longSilence)) {
+        clearInterval(poll);
         silencePollRef.current = null;
-        clearTimeout(hardCapTimer);
+        clearTimeout(hardCap);
         silenceTimerRef.current = null;
         if (isRecordingRef.current) stopListening();
       }
     }, 200);
-    silencePollRef.current = pollInterval;
-
+    silencePollRef.current = poll;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEnding, reportData, sessionId, apiUrl, initMicrophone, stopListening, startWaveform, stopWaveform, verbalTimeLeft]);
+  }, [apiUrl, initMicrophone, stopListening, startWaveform, stopWaveform, handleUserSpeech]);
+
+  // The unified "start listening" — tries Web Speech first
+  const startListening = useCallback(() => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      startWebSpeech();
+    } else {
+      startMediaRecorder();
+    }
+  }, [startWebSpeech, startMediaRecorder]);
+
+  // Keep ref up-to-date so callbacks always call the latest version
+  useEffect(() => { startListeningRef.current = startListening; }, [startListening]);
 
   // ------------------------------------------------------------------
-  // SPEAK TEXT — ElevenLabs primary → OpenAI TTS → browser speech
+  // SPEAK TEXT — browser TTS (instant, no server round-trip)
   // ------------------------------------------------------------------
-  const speakText = useCallback(async (text: string) => {
+  const speakText = useCallback((text: string) => {
     if (!text) {
       setSpeechQueue(prev => {
         const next = prev.slice(1);
         queueLengthRef.current = next.length;
-        if (next.length === 0) setTimeout(() => startListening(), 300);
+        if (next.length === 0) setTimeout(() => startListeningRef.current(), 300);
         return next;
       });
       return;
     }
 
-    // Stop any currently playing audio
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = '';
-      audioRef.current = null;
-    }
-
+    stopSpeaking();
     isSpeakingRef.current = true;
     stopListening();
     setAiState('SPEAKING');
@@ -429,83 +532,41 @@ export default function VoiceAssistant({
 
     const handleEnd = () => {
       isSpeakingRef.current = false;
-      audioRef.current = null;
       setSpeechQueue(prev => {
         const next = prev.slice(1);
         queueLengthRef.current = next.length;
         if (next.length === 0) {
           setAiState('IDLE');
           setTranscript('');
-          setTimeout(() => startListening(), 400);
+          setTimeout(() => startListeningRef.current(), 300);
         }
         return next;
       });
     };
 
-    try {
-      // Call OpenAI TTS via backend
-      const res = await fetch(`${apiUrl}/api/interview/tts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, voice: 'onyx' }), // onyx = deep professional male voice
-      });
+    // Use browser TTS directly — instant start, no network wait
+    const utterance = new SpeechSynthesisUtterance(text);
+    const voices = window.speechSynthesis.getVoices();
+    const preferred =
+      voices.find(v => v.name.includes('Google UK English Male')) ||
+      voices.find(v => v.name.includes('Daniel')) ||
+      voices.find(v => v.name.includes('Microsoft David')) ||
+      voices.find(v => v.lang === 'en-US' && !v.localService) ||
+      voices.find(v => v.lang.startsWith('en')) || null;
 
-      if (!res.ok) throw new Error(`TTS failed: ${res.status}`);
+    if (preferred) utterance.voice = preferred;
+    utterance.rate   = 0.92;
+    utterance.pitch  = 1.0;
+    utterance.volume = 1.0;
+    utterance.onend   = handleEnd;
+    utterance.onerror = handleEnd;
 
-      const audioBlob = await res.blob();
-
-      // Empty buffer = backend intentionally fell back (Groq provider has no TTS)
-      // Silently use browser speech — not an error
-      if (audioBlob.size < 100) {
-        console.info('[TTS] Empty buffer received — using browser speech fallback.');
-        throw new Error('SILENT_FALLBACK');
-      }
-
-      const audioUrl  = URL.createObjectURL(audioBlob);
-      const audio     = new Audio(audioUrl);
-      audioRef.current = audio;
-
-      audio.onended = () => {
-        URL.revokeObjectURL(audioUrl);
-        handleEnd();
-      };
-
-      audio.onerror = () => {
-        URL.revokeObjectURL(audioUrl);
-        handleEnd();
-      };
-
-      await audio.play();
-
-    } catch (err: any) {
-      // Only log as error if it's a real failure, not an intentional silent fallback
-      if (err?.message !== 'SILENT_FALLBACK') {
-        console.error('❌ TTS Error — falling back to browser speech:', err);
-      }
-
-      // FALLBACK: browser speech if OpenAI TTS fails
-      isSpeakingRef.current = true;
-      const utterance = new SpeechSynthesisUtterance(text);
-      const voices    = window.speechSynthesis.getVoices();
-      const preferred =
-        voices.find(v => v.name.includes('Google UK English Male')) ||
-        voices.find(v => v.name.includes('Daniel')) ||
-        voices.find(v => v.lang === 'en-US' && !v.localService) ||
-        voices.find(v => v.lang.startsWith('en')) || null;
-
-      if (preferred) utterance.voice = preferred;
-      utterance.rate = 0.92; utterance.pitch = 1.0; utterance.volume = 1.0;
-
-      utterance.onend  = handleEnd;
-      utterance.onerror = handleEnd;
-
-      if (window.speechSynthesis.getVoices().length === 0) {
-        window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.speak(utterance);
-      } else {
-        window.speechSynthesis.speak(utterance);
-      }
+    if (window.speechSynthesis.getVoices().length === 0) {
+      window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.speak(utterance);
+    } else {
+      window.speechSynthesis.speak(utterance);
     }
-  }, [apiUrl, startListening, stopListening]);
+  }, [stopSpeaking, stopListening]);
 
   useEffect(() => {
     if (speechQueue.length > 0 && !isSpeakingRef.current) speakText(speechQueue[0]);
@@ -533,15 +594,14 @@ export default function VoiceAssistant({
     stopSpeaking(); stopListening();
     isSpeakingRef.current = false; isRecordingRef.current = false;
     setSpeechQueue([]); setAiState('IDLE');
-    setTimeout(() => startListening(), 500);
+    setTimeout(() => startListeningRef.current(), 500);
   };
 
   useEffect(() => {
     if (!onCheatEvent) return;
-    const handler = (type: string, detail?: string) => {
+    (window as any).__reportCheat = (type: string, detail?: string) => {
       socketRef.current?.emit('cheat_event', { sessionId, type, detail });
     };
-    (window as any).__reportCheat = handler;
   }, [sessionId, onCheatEvent]);
 
   // Cleanup
@@ -566,7 +626,7 @@ export default function VoiceAssistant({
     return `${m}:${sec.toString().padStart(2, '0')}`;
   };
 
-  const timerColor   = verbalTimeLeft <= 120 ? '#f87171' : verbalTimeLeft <= 300 ? '#facc15' : '#4ade80';
+  const timerColor    = verbalTimeLeft <= 120 ? '#f87171' : verbalTimeLeft <= 300 ? '#facc15' : '#4ade80';
   const getStateColor = () => {
     switch (aiState) {
       case 'SPEAKING':  return '#a855f7';
@@ -582,31 +642,27 @@ export default function VoiceAssistant({
   // ------------------------------------------------------------------
   return (
     <>
-      {/* TERMINATED OVERLAY */}
+      {/* ── TERMINATED OVERLAY ── */}
       {isTerminated && (
         <div className="overlay">
           <div className="terminated-card">
             <div className="terminated-icon">🚫</div>
             <h2>Interview Terminated</h2>
-            <p>{terminatedMessage || 'The interview has been terminated due to a violation of interview integrity.'}</p>
-            <button onClick={() => window.location.href = '/'} className="restart-btn">
-              Return to Home
-            </button>
+            <p>{terminatedMessage || 'The interview has been terminated due to a violation.'}</p>
+            <button onClick={() => window.location.href = '/'} className="restart-btn">Return to Home</button>
           </div>
         </div>
       )}
 
-      {/* START OVERLAY */}
+      {/* ── START OVERLAY ── */}
       {!hasStarted && (
         <div className="overlay">
           <div className="start-card">
             <div className="card-icon">🤖</div>
             <h2>AI Interviewer Ready</h2>
-            <p>Powered by ElevenLabs · GPT-4o · Whisper</p>
+            <p>Powered by Groq · Whisper · Web Speech</p>
             {resumeContext && (
-              <div className="resume-indicator">
-                ✅ Resume loaded — personalized questions enabled
-              </div>
+              <div className="resume-indicator">✅ Resume loaded — personalized questions enabled</div>
             )}
             <button
               onClick={handleStartInteraction}
@@ -625,7 +681,7 @@ export default function VoiceAssistant({
         </div>
       )}
 
-      {/* REPORT OVERLAY */}
+      {/* ── REPORT OVERLAY ── */}
       {reportData && (
         <div className="overlay">
           <div className="report-card">
@@ -663,14 +719,36 @@ export default function VoiceAssistant({
               </div>
             )}
             <div className="section"><h3>Summary</h3><p>{reportData.feedback_summary}</p></div>
-            <button onClick={() => window.location.reload()} className="restart-btn">
-              Start New Interview
-            </button>
+            <button onClick={() => window.location.reload()} className="restart-btn">Start New Interview</button>
           </div>
         </div>
       )}
 
-      {/* HUD */}
+      {/* ── CHAT PANEL ── */}
+      {hasStarted && !reportData && (
+        <div className="chat-panel">
+          <div className="chat-header" onClick={() => setChatExpanded(p => !p)}>
+            <span>💬 Conversation</span>
+            <span className="chat-toggle">{chatExpanded ? '▼' : '▶'}</span>
+          </div>
+          {chatExpanded && (
+            <div className="chat-messages">
+              {chatMessages.length === 0 && (
+                <div className="chat-empty">Conversation will appear here...</div>
+              )}
+              {chatMessages.map(msg => (
+                <div key={msg.id} className={`chat-bubble ${msg.role}`}>
+                  <span className="bubble-label">{msg.role === 'ai' ? '🤖 AI' : '🧑 You'}</span>
+                  <span className="bubble-text">{msg.text}</span>
+                </div>
+              ))}
+              <div ref={chatEndRef} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── HUD ── */}
       <div className="hud">
         {isEnding && !reportData && (
           <div className="processing">⏳ Generating report...</div>
@@ -697,14 +775,14 @@ export default function VoiceAssistant({
             <span className="silence-warn">{silenceSeconds}s</span>
           )}
         </div>
-        {transcript && (
+        {(transcript || liveTranscript) && (
           <div className="caption">
             <span className="caption-label">You:</span>
-            &quot;{transcript}&quot;
+            &quot;{liveTranscript || transcript}&quot;
           </div>
         )}
         <div className="controls">
-          <button onClick={handleManualReset} className="ctrl-btn reset">↻</button>
+          <button onClick={handleManualReset} className="ctrl-btn reset" title="Reset mic">↻</button>
           <button onClick={handleEndInterview} className="ctrl-btn end">🏁 Finish</button>
         </div>
       </div>
@@ -737,7 +815,7 @@ export default function VoiceAssistant({
         }
         .card-icon { font-size: 2.5rem; margin-bottom: 12px; }
         .start-card h2 { margin: 0 0 8px; font-size: 1.3rem; font-weight: 700; }
-        .start-card p { color: rgba(255,255,255,0.4); font-size: 0.85rem; margin: 0 0 16px; }
+        .start-card p  { color: rgba(255,255,255,0.4); font-size: 0.85rem; margin: 0 0 16px; }
         .resume-indicator {
           background: rgba(74,222,128,0.08);
           border: 1px solid rgba(74,222,128,0.2);
@@ -763,6 +841,7 @@ export default function VoiceAssistant({
         .conn-dot.connecting   { background: #f59e0b; animation: blink 1s infinite; }
         .conn-dot.disconnected,
         .conn-dot.error        { background: #f87171; }
+        /* ── REPORT ── */
         .report-card {
           background: #0a0a10;
           border: 1px solid rgba(255,255,255,0.08);
@@ -779,14 +858,14 @@ export default function VoiceAssistant({
           align-items: center; justify-content: center;
           margin: 0 auto 24px;
         }
-        .score-num { font-size: 2.4rem; font-weight: 800; line-height: 1; }
+        .score-num  { font-size: 2.4rem; font-weight: 800; line-height: 1; }
         .score-label { font-size: 0.75rem; opacity: 0.6; }
-        .breakdown { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+        .breakdown  { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
         .metric-row { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; }
         .metric-label { width: 120px; flex-shrink: 0; color: rgba(255,255,255,0.5); }
-        .metric-bar { flex: 1; height: 5px; background: rgba(255,255,255,0.07); border-radius: 3px; overflow: hidden; }
-        .metric-fill { height: 100%; background: linear-gradient(90deg,#7c3aed,#4ade80); border-radius: 3px; }
-        .metric-val { width: 44px; text-align: right; font-weight: 600; font-size: 0.82rem; }
+        .metric-bar   { flex: 1; height: 5px; background: rgba(255,255,255,0.07); border-radius: 3px; overflow: hidden; }
+        .metric-fill  { height: 100%; background: linear-gradient(90deg,#7c3aed,#4ade80); border-radius: 3px; }
+        .metric-val   { width: 44px; text-align: right; font-weight: 600; font-size: 0.82rem; }
         .cheat-notice {
           background: rgba(248,113,113,0.08);
           border: 1px solid rgba(248,113,113,0.2);
@@ -799,15 +878,77 @@ export default function VoiceAssistant({
           border-radius: 10px; padding: 12px 14px; margin-bottom: 10px;
         }
         .section h3 { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.3); margin: 0 0 8px; }
-        .section ul { padding-left: 16px; margin: 0; }
-        .section li { font-size: 0.85rem; color: rgba(255,255,255,0.7); margin-bottom: 3px; }
-        .section p  { font-size: 0.85rem; color: rgba(255,255,255,0.55); line-height: 1.6; margin: 0; }
+        .section ul  { padding-left: 16px; margin: 0; }
+        .section li  { font-size: 0.85rem; color: rgba(255,255,255,0.7); margin-bottom: 3px; }
+        .section p   { font-size: 0.85rem; color: rgba(255,255,255,0.55); line-height: 1.6; margin: 0; }
         .restart-btn {
           width: 100%; padding: 13px;
           background: linear-gradient(135deg,#7c3aed,#a855f7);
           color: white; border: none; border-radius: 10px;
           font-weight: 700; cursor: pointer; font-size: 0.95rem; margin-top: 6px;
         }
+        /* ── CHAT PANEL ── */
+        .chat-panel {
+          position: fixed; left: 16px; top: 50%;
+          transform: translateY(-50%);
+          width: 300px; max-height: 60vh;
+          background: rgba(8,8,18,0.92);
+          backdrop-filter: blur(12px);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 16px;
+          z-index: 900;
+          display: flex; flex-direction: column;
+          overflow: hidden;
+        }
+        .chat-header {
+          display: flex; justify-content: space-between; align-items: center;
+          padding: 10px 14px;
+          border-bottom: 1px solid rgba(255,255,255,0.06);
+          font-size: 0.78rem; font-weight: 700;
+          color: rgba(255,255,255,0.5);
+          cursor: pointer; user-select: none;
+        }
+        .chat-header:hover { color: rgba(255,255,255,0.75); }
+        .chat-toggle { font-size: 0.65rem; }
+        .chat-messages {
+          flex: 1; overflow-y: auto; padding: 10px;
+          display: flex; flex-direction: column; gap: 8px;
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255,255,255,0.1) transparent;
+        }
+        .chat-empty {
+          font-size: 0.75rem; color: rgba(255,255,255,0.2);
+          text-align: center; padding: 20px 0;
+        }
+        .chat-bubble {
+          display: flex; flex-direction: column; gap: 2px;
+          max-width: 100%;
+        }
+        .chat-bubble.user { align-items: flex-end; }
+        .chat-bubble.ai   { align-items: flex-start; }
+        .bubble-label {
+          font-size: 0.62rem; font-weight: 700;
+          color: rgba(255,255,255,0.3);
+          text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .bubble-text {
+          font-size: 0.82rem; line-height: 1.5;
+          padding: 8px 11px; border-radius: 10px;
+          max-width: 100%; word-break: break-word;
+        }
+        .chat-bubble.user .bubble-text {
+          background: rgba(124,58,237,0.3);
+          border: 1px solid rgba(124,58,237,0.3);
+          color: rgba(255,255,255,0.88);
+          border-bottom-right-radius: 3px;
+        }
+        .chat-bubble.ai .bubble-text {
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.08);
+          color: rgba(255,255,255,0.78);
+          border-bottom-left-radius: 3px;
+        }
+        /* ── HUD ── */
         .hud {
           position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
           display: flex; flex-direction: column; align-items: center;
@@ -827,10 +968,10 @@ export default function VoiceAssistant({
           padding: 4px 14px; border-radius: 20px;
           font-size: 0.8rem; font-weight: 700; transition: color 0.5s;
         }
-        .timer-icon { font-size: 0.75rem; }
-        .timer-val  { font-family: 'SF Mono', monospace; }
+        .timer-icon  { font-size: 0.75rem; }
+        .timer-val   { font-family: 'SF Mono', monospace; }
         .timer-label { font-size: 0.65rem; opacity: 0.5; font-weight: 400; }
-        .timer-warn {
+        .timer-warn  {
           font-size: 0.62rem; background: currentColor;
           color: black; padding: 1px 6px; border-radius: 4px; font-weight: 800;
         }
@@ -851,7 +992,7 @@ export default function VoiceAssistant({
           background: rgba(0,0,0,0.65); backdrop-filter: blur(8px);
           padding: 4px 14px; border-radius: 12px; border: 1px solid;
         }
-        .state-dot { width: 6px; height: 6px; border-radius: 50%; }
+        .state-dot    { width: 6px; height: 6px; border-radius: 50%; }
         .silence-warn {
           background: rgba(245,158,11,0.2); color: #f59e0b;
           padding: 1px 6px; border-radius: 4px; font-size: 0.62rem;
@@ -870,7 +1011,7 @@ export default function VoiceAssistant({
           border-radius: 8px; border: none; cursor: pointer; font-weight: 600;
         }
         .ctrl-btn.reset { background: rgba(100,116,139,0.8); color: white; }
-        .ctrl-btn.end   { background: rgba(16,185,129,0.9); color: white; }
+        .ctrl-btn.end   { background: rgba(16,185,129,0.9);  color: white; }
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.5} }
       `}</style>
     </>

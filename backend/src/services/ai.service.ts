@@ -3,15 +3,31 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { randomUUID } from 'crypto';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import ffmpeg from 'fluent-ffmpeg';
+
+const execAsync = promisify(exec);
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import dotenv from 'dotenv';
-import { DSAQuestion, EvaluationResult } from '../types/interview.types';
+import { DSAQuestion, DSATestCase, EvaluationResult, StarterCode, TestCaseResult } from '../types/interview.types';
+import { QuestionMeta } from '../data/question-bank';
 
 dotenv.config();
+
+// ================================================================
+// LOCAL CODE EXECUTION — spawns node/python3/java/g++ as child processes
+// No external API needed — works on any server
+// ================================================================
+const CODE_EXT: Record<string, string> = {
+  javascript: 'js',
+  python:     'py',
+  java:       'java',
+  cpp:        'cpp',
+};
 
 // ================================================================
 // PROVIDER DETECTION
@@ -59,6 +75,129 @@ const MODELS = {
 };
 
 // ================================================================
+// SEMAPHORE — limits concurrent AI chat calls to prevent API overload
+// ================================================================
+class Semaphore {
+  private permits: number;
+  private queue: (() => void)[] = [];
+  constructor(permits: number) { this.permits = permits; }
+  acquire(): Promise<void> {
+    if (this.permits > 0) { this.permits--; return Promise.resolve(); }
+    return new Promise(resolve => this.queue.push(resolve));
+  }
+  release(): void {
+    const next = this.queue.shift();
+    if (next) next();
+    else this.permits++;
+  }
+}
+const aiSemaphore = new Semaphore(5); // max 5 concurrent AI chat calls
+
+// ================================================================
+// FALLBACK QUESTION & STARTER CODE (used when AI generation fails)
+// ================================================================
+const FALLBACK_STARTER = {
+  javascript: `const lines = require('fs').readFileSync('/dev/stdin', 'utf8').trim().split('\\n');
+const n = parseInt(lines[0]);
+const nums = lines[1].split(' ').map(Number);
+const target = parseInt(lines[2]);
+
+// ─── YOUR SOLUTION ───────────────────────────────────────────────
+function twoSum(nums, target) {
+  // Write your solution here
+
+}
+// ─────────────────────────────────────────────────────────────────
+
+const result = twoSum(nums, target);
+console.log(result.join(' '));`,
+
+  python: `import sys
+lines = sys.stdin.read().strip().split('\\n')
+n = int(lines[0])
+nums = list(map(int, lines[1].split()))
+target = int(lines[2])
+
+# ─── YOUR SOLUTION ───────────────────────────────────────────────
+def twoSum(nums, target):
+    # Write your solution here
+    pass
+# ─────────────────────────────────────────────────────────────────
+
+result = twoSum(nums, target)
+print(' '.join(map(str, result)))`,
+
+  java: `import java.util.*;
+class Main {
+    // ─── YOUR SOLUTION ───────────────────────────────────────────────
+    static int[] twoSum(int[] nums, int target) {
+        // Write your solution here
+        return new int[]{};
+    }
+    // ─────────────────────────────────────────────────────────────────
+
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        int n = sc.nextInt();
+        int[] nums = new int[n];
+        for (int i = 0; i < n; i++) nums[i] = sc.nextInt();
+        int target = sc.nextInt();
+        int[] res = twoSum(nums, target);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < res.length; i++) { if (i > 0) sb.append(' '); sb.append(res[i]); }
+        System.out.println(sb);
+    }
+}`,
+
+  cpp: `#include<bits/stdc++.h>
+using namespace std;
+// ─── YOUR SOLUTION ───────────────────────────────────────────────
+vector<int> twoSum(vector<int>& nums, int target) {
+    // Write your solution here
+    return {};
+}
+// ─────────────────────────────────────────────────────────────────
+
+int main(){
+    int n; cin >> n;
+    vector<int> nums(n);
+    for (int& x : nums) cin >> x;
+    int target; cin >> target;
+    vector<int> res = twoSum(nums, target);
+    for (int i = 0; i < (int)res.size(); i++) { if(i) cout << ' '; cout << res[i]; }
+    cout << endl;
+    return 0;
+}`,
+};
+
+function FALLBACK_QUESTION(level: string): DSAQuestion {
+  return {
+    title: 'Two Sum',
+    description: `Given an array of integers nums and a target integer target, return the indices of the two numbers that add up to target.
+
+Input format:
+- Line 1: n (size of array)
+- Line 2: n space-separated integers
+- Line 3: target
+
+Output: space-separated indices (0-indexed)
+
+Example:
+Input: 4 / 2 7 11 15 / 9
+Output: 0 1`,
+    difficulty: level,
+    constraints: ['2 <= nums.length <= 10^4', '-10^9 <= nums[i] <= 10^9', 'Exactly one valid answer exists'],
+    functionSignature: 'function twoSum(nums, target)',
+    testCases: [
+      { input: 'nums = [2,7,11,15], target = 9', output: '[0,1]', stdin: '4\n2 7 11 15\n9', expectedOutput: '0 1' },
+      { input: 'nums = [3,2,4], target = 6',     output: '[1,2]', stdin: '3\n3 2 4\n6',   expectedOutput: '1 2' },
+      { input: 'nums = [3,3], target = 6',        output: '[0,1]', stdin: '2\n3 3\n6',     expectedOutput: '0 1' },
+    ],
+    starterCode: FALLBACK_STARTER as StarterCode,
+  };
+}
+
+// ================================================================
 // AI SERVICE CLASS
 // ================================================================
 class AIService {
@@ -84,6 +223,21 @@ class AIService {
     console.log(`🟢 Chat Provider : ${this.chatProvider === 'groq' ? 'Groq (llama-3.3-70b)' : 'OpenAI (GPT-4o)'}`);
     console.log(`🎙️ TTS Provider  : ${this.ttsProvider === 'elevenlabs' ? 'ElevenLabs (ultra-realistic)' : this.ttsProvider === 'openai' ? 'OpenAI TTS' : 'Browser speechSynthesis (fallback)'}`);
     console.log(`🎤 STT Provider  : ${this.chatProvider === 'groq' ? 'Groq Whisper' : 'OpenAI Whisper'}`);
+  }
+
+  // ================================================================
+  // INTERNAL: rate-limited chat completion
+  // Acquires semaphore slot before calling the API — prevents thundering-herd
+  // ================================================================
+  private async chatComplete(
+    params: Parameters<typeof this.chatClient.chat.completions.create>[0]
+  ): Promise<import('openai/resources').ChatCompletion> {
+    await aiSemaphore.acquire();
+    try {
+      return this.chatClient.chat.completions.create(params) as Promise<import('openai/resources').ChatCompletion>;
+    } finally {
+      aiSemaphore.release();
+    }
   }
 
   // ================================================================
@@ -230,116 +384,352 @@ class AIService {
   }
 
   // ================================================================
+  // LOCAL CODE EXECUTION — spawns language runtimes as child processes
+  // ================================================================
+  async executeCode(
+    code: string,
+    language: string,
+    stdin: string,
+  ): Promise<{ stdout: string; stderr: string; exitCode: number; compileError: string }> {
+    const tmpDir  = os.tmpdir();
+    const id      = randomUUID();
+    const ext     = CODE_EXT[language] ?? 'js';
+    const TIMEOUT = 8000; // 8 s wall time
+
+    // For Java the file name must match the class name — always "Main"
+    const fileName = language === 'java' ? 'Main.java' : `code_${id}.${ext}`;
+    const filePath = path.join(tmpDir, fileName);
+    const stdinFile = path.join(tmpDir, `stdin_${id}.txt`);
+
+    fs.writeFileSync(filePath, code, 'utf8');
+    fs.writeFileSync(stdinFile, stdin, 'utf8');
+
+    let runCmd: string;
+    let compileCmd: string | null = null;
+    let compiledBin: string | null = null;
+
+    switch (language) {
+      case 'python':
+        runCmd = `python3 "${filePath}" < "${stdinFile}"`;
+        break;
+      case 'java':
+        compileCmd = `javac "${filePath}"`;
+        runCmd     = `java -cp "${tmpDir}" Main < "${stdinFile}"`;
+        break;
+      case 'cpp': {
+        compiledBin = path.join(tmpDir, `prog_${id}`);
+        compileCmd  = `g++ -o "${compiledBin}" "${filePath}"`;
+        runCmd      = `"${compiledBin}" < "${stdinFile}"`;
+        break;
+      }
+      default: // javascript
+        runCmd = `node "${filePath}" < "${stdinFile}"`;
+    }
+
+    const cleanup = () => {
+      try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+      try { fs.unlinkSync(stdinFile); } catch { /* ignore */ }
+      if (compiledBin) try { fs.unlinkSync(compiledBin); } catch { /* ignore */ }
+    };
+
+    try {
+      // Compile step (Java / C++)
+      if (compileCmd) {
+        try {
+          await execAsync(compileCmd, { timeout: TIMEOUT });
+        } catch (e: unknown) {
+          cleanup();
+          const msg = e instanceof Error ? e.message : String(e);
+          return { stdout: '', stderr: '', exitCode: 1, compileError: msg };
+        }
+      }
+
+      // Run step
+      const { stdout, stderr } = await execAsync(runCmd, { timeout: TIMEOUT });
+      cleanup();
+      return { stdout: stdout.trim(), stderr: stderr.trim(), exitCode: 0, compileError: '' };
+    } catch (e: unknown) {
+      cleanup();
+      const err = e as { stdout?: string; stderr?: string; killed?: boolean; code?: number };
+      if (err.killed) {
+        return { stdout: '', stderr: 'Time Limit Exceeded', exitCode: 124, compileError: '' };
+      }
+      return {
+        stdout:       (err.stdout ?? '').trim(),
+        stderr:       (err.stderr ?? String(e)).trim(),
+        exitCode:     err.code ?? 1,
+        compileError: '',
+      };
+    }
+  }
+
+  // Runs code against all provided test cases locally
+  async runTestCases(
+    code:      string,
+    language:  string,
+    testCases: DSATestCase[],
+  ): Promise<TestCaseResult[]> {
+    const executable = testCases.filter(tc => tc.stdin !== undefined && tc.expectedOutput !== undefined);
+
+    const rawResults = await Promise.all(
+      executable.map(tc => this.executeCode(code, language, tc.stdin!).catch((e) => ({ error: String(e) }))),
+    );
+
+    return executable.map((tc, i) => {
+      const r = rawResults[i] as { stdout?: string; stderr?: string; exitCode?: number; compileError?: string; error?: string };
+
+      if (r.error) {
+        return { input: tc.input, expectedOutput: tc.expectedOutput ?? tc.output, actualOutput: r.error, passed: false, status: 'Error' };
+      }
+
+      const expected = (tc.expectedOutput ?? '').trim();
+      let actualOutput: string;
+      let status: string;
+
+      if (r.compileError) {
+        actualOutput = r.compileError;
+        status = 'Compilation Error';
+      } else if ((r.exitCode ?? 0) !== 0 && (r.stderr?.includes('Time Limit') || r.exitCode === 124)) {
+        actualOutput = 'Time Limit Exceeded';
+        status = 'Time Limit Exceeded';
+      } else if ((r.exitCode ?? 0) !== 0) {
+        actualOutput = r.stderr || 'Runtime Error';
+        status = 'Runtime Error';
+      } else {
+        actualOutput = r.stdout ?? '';
+        status = actualOutput === expected ? 'Accepted' : 'Wrong Answer';
+      }
+
+      return {
+        input:          tc.input,
+        expectedOutput: expected,
+        actualOutput,
+        passed:         status === 'Accepted',
+        status,
+        time:   null,
+        memory: null,
+      };
+    });
+  }
+
+  // ================================================================
   // DSA QUESTION GENERATION
   // ================================================================
-  async generateDSAQuestion(level: string): Promise<DSAQuestion> {
-    const prompt = `Generate a unique ${level}-level Data Structures and Algorithms coding interview question.
-Return STRICT JSON only — no extra text, no markdown:
+  async generateDSAQuestion(level: string, meta?: QuestionMeta): Promise<DSAQuestion> {
+    const difficultyGuide: Record<string, string> = {
+      easy:   'easy to medium level (arrays, strings, hashmaps, two-pointers — solvable in 15-20 min)',
+      medium: 'medium level (trees, sliding window, BFS/DFS, sorting — solvable in 25-30 min)',
+      hard:   'medium-hard to hard level (DP, graphs, backtracking, advanced data structures — solvable in 40-50 min)',
+    };
+    const diffDesc = difficultyGuide[level] ?? `${level}-level`;
+
+    const problemSpec = meta
+      ? `Generate the well-known LeetCode problem "${meta.title}" (topic: ${meta.topic}, URL: ${meta.url}).`
+      : `Generate a unique ${diffDesc} DSA coding problem for a technical interview.`;
+
+    const prompt = `${problemSpec}
+
+CRITICAL REQUIREMENTS:
+1. testCases must include both human-readable AND machine-executable (stdin/expectedOutput) formats
+2. starterCode must be COMPLETE RUNNABLE PROGRAMS for each language that:
+   - Read input from stdin exactly matching the stdin format in testCases
+   - Have a clear "YOUR SOLUTION" section in the middle where user writes logic
+   - Print output to stdout exactly matching expectedOutput (trimmed, no trailing space)
+3. stdin format must be consistent with what the starterCode reads
+
+Return STRICT JSON only — no markdown, no extra text:
 {
   "title": "Short descriptive title",
-  "description": "Clear problem statement with examples",
+  "description": "Clear problem statement including Input/Output format description and 1-2 examples",
   "difficulty": "${level}",
   "constraints": ["Constraint 1", "Constraint 2"],
+  "functionSignature": "function name and signature for reference",
   "testCases": [
-    {"input": "example input 1", "output": "example output 1"},
-    {"input": "example input 2", "output": "example output 2"}
+    {
+      "input": "human readable: e.g. nums = [2,7,11,15], target = 9",
+      "output": "human readable: e.g. [0,1]",
+      "stdin": "machine stdin — e.g. 4\\n2 7 11 15\\n9",
+      "expectedOutput": "exact stdout — e.g. 0 1"
+    },
+    {
+      "input": "human readable input 2",
+      "output": "human readable output 2",
+      "stdin": "machine stdin 2",
+      "expectedOutput": "exact stdout 2"
+    },
+    {
+      "input": "human readable input 3 (harder edge case)",
+      "output": "human readable output 3",
+      "stdin": "machine stdin 3",
+      "expectedOutput": "exact stdout 3"
+    }
   ],
-  "functionSignature": "function solve(args) {"
+  "starterCode": {
+    "javascript": "// COMPLETE RUNNABLE JS PROGRAM\\nconst lines = require('fs').readFileSync('/dev/stdin','utf8').trim().split('\\\\n');\\n// parse input from lines...\\n\\n// ─── YOUR SOLUTION ──────────────────────────────────────────\\nfunction solve(...) {\\n  // write your solution here\\n  \\n}\\n// ────────────────────────────────────────────────────────────\\n\\n// call function and print output\\nconsole.log(solve(...));",
+    "python": "# COMPLETE RUNNABLE PYTHON PROGRAM\\nimport sys\\nlines = sys.stdin.read().strip().split('\\\\n')\\n# parse input...\\n\\n# ─── YOUR SOLUTION ──────────────────────────────────────────\\ndef solve(...):\\n    # write your solution here\\n    pass\\n# ────────────────────────────────────────────────────────────\\n\\n# call function and print output\\nprint(solve(...))",
+    "java": "// COMPLETE RUNNABLE JAVA PROGRAM\\nimport java.util.*;\\nclass Main {\\n    // ─── YOUR SOLUTION ──────────────────────────────────────────\\n    static ... solve(...) {\\n        // write your solution here\\n        return ...;\\n    }\\n    // ────────────────────────────────────────────────────────────\\n    public static void main(String[] args) {\\n        Scanner sc = new Scanner(System.in);\\n        // parse input and call solve(...)\\n        System.out.println(...);\\n    }\\n}",
+    "cpp": "// COMPLETE RUNNABLE C++ PROGRAM\\n#include<bits/stdc++.h>\\nusing namespace std;\\n// ─── YOUR SOLUTION ──────────────────────────────────────────\\n... solve(...) {\\n    // write your solution here\\n    return ...;\\n}\\n// ────────────────────────────────────────────────────────────\\nint main(){\\n    // parse input and call solve(...)\\n    cout << ... << endl;\\n    return 0;\\n}"
+  }
 }`;
 
     try {
-      const completion = await this.chatClient.chat.completions.create({
+      const completion = await this.chatComplete({
         messages: [{ role: 'user', content: prompt }],
         model: MODELS.chat,
-        temperature: 0.6,
-        max_tokens: 1000,
+        temperature: 0.5,
+        max_tokens: 3000,
         response_format: { type: 'json_object' },
       });
       const rawText = completion.choices[0]?.message?.content || '{}';
       const question = this.cleanAndParse(rawText);
       if (!question) throw new Error('Parsed JSON was null');
+
+      const rawTestCases = Array.isArray(question.testCases) ? question.testCases as Record<string, string>[] : [];
+      const testCases: DSATestCase[] = rawTestCases.map(tc => ({
+        input:          this.str(tc.input,          ''),
+        output:         this.str(tc.output,         ''),
+        stdin:          tc.stdin          ? this.str(tc.stdin,          undefined) : undefined,
+        expectedOutput: tc.expectedOutput ? this.str(tc.expectedOutput, undefined) : undefined,
+      }));
+
+      const rawStarter = question.starterCode as Record<string, string> | undefined;
+      const starterCode: StarterCode | undefined = rawStarter ? {
+        javascript: this.str(rawStarter.javascript, FALLBACK_STARTER.javascript),
+        python:     this.str(rawStarter.python,     FALLBACK_STARTER.python),
+        java:       this.str(rawStarter.java,       FALLBACK_STARTER.java),
+        cpp:        this.str(rawStarter.cpp,        FALLBACK_STARTER.cpp),
+      } : undefined;
+
       return {
         title:             this.str(question.title,             'Unknown Problem'),
         description:       this.str(question.description,       'No description provided.'),
         difficulty:        this.str(question.difficulty,        level),
-        testCases:         Array.isArray(question.testCases)  ? (question.testCases as { input: string; output: string }[]) : [],
+        testCases,
         constraints:       this.strArr(question.constraints),
         functionSignature: this.str(question.functionSignature, 'function solution() {'),
+        starterCode,
       };
     } catch (err) {
       console.error('❌ Question Gen Error (using fallback):', err);
-      return {
-        title: 'Two Sum',
-        description: 'Given an array of integers nums and a target integer target, return indices of the two numbers that add up to target.',
-        difficulty: level,
-        constraints: ['2 <= nums.length <= 10^4', '-10^9 <= nums[i] <= 10^9'],
-        testCases: [
-          { input: 'nums = [2,7,11,15], target = 9', output: '[0,1]' },
-          { input: 'nums = [3,2,4], target = 6',     output: '[1,2]' },
-        ],
-        functionSignature: 'function twoSum(nums, target) {',
-        isFallback: true,
-      } as DSAQuestion & { isFallback: boolean };
+      return FALLBACK_QUESTION(level);
     }
   }
 
   // ================================================================
-  // CODE EVALUATION
+  // CODE EVALUATION — Piston real execution, AI feedback fallback
   // ================================================================
   async evaluateCode(
     question: DSAQuestion,
     code: string,
-    language: string
+    language: string,
+  ): Promise<EvaluationResult> {
+    const executableCases = question.testCases.filter(tc => tc.stdin !== undefined);
+
+    // --- Piston path (always available, no API key required) ---
+    if (executableCases.length > 0) {
+      try {
+        const testCaseResults = await this.runTestCases(code, language, question.testCases);
+        const passed  = testCaseResults.filter(r => r.passed).length;
+        const total   = testCaseResults.length || 1;
+        const score   = Math.round((passed / total) * 100);
+
+        const hasCompileErr = testCaseResults.some(r => r.status === 'Compilation Error');
+        const hasTLE        = testCaseResults.some(r => r.status === 'Time Limit Exceeded');
+        const hasRTE        = testCaseResults.some(r => r.status?.startsWith('Runtime'));
+
+        const verdict: EvaluationResult['verdict'] =
+          passed === total    ? 'Accepted'             :
+          hasCompileErr       ? 'Compilation Error'    :
+          hasTLE              ? 'Time Limit Exceeded'  :
+          hasRTE              ? 'Runtime Error'        : 'Wrong Answer';
+
+        const feedback = await this.getCodeFeedback(question, code, language, score, verdict, testCaseResults);
+
+        return { score, verdict, feedback, improvements: [], testCases: testCaseResults };
+      } catch (err) {
+        console.error('❌ Piston evaluation failed — falling back to AI:', err);
+      }
+    }
+
+    // --- AI fallback (question has no stdin test cases) ---
+    return this.evaluateCodeWithAI(question, code, language);
+  }
+
+  // AI-only evaluation (fallback when Judge0 is unavailable)
+  private async evaluateCodeWithAI(
+    question: DSAQuestion,
+    code: string,
+    language: string,
   ): Promise<EvaluationResult> {
     const prompt = `You are a senior software engineer evaluating a candidate's code submission.
 
-Problem Title: ${question.title}
-Problem Description: ${question.description}
+Problem: ${question.title}
+Description: ${question.description}
 Language: ${language}
-Submitted Code:
+Code:
 \`\`\`${language}
 ${code}
 \`\`\`
 
-Evaluate strictly and return STRICT JSON only:
+Return STRICT JSON only:
 {
-  "score": <number 0-100>,
+  "score": <0-100>,
   "verdict": "<Accepted|Wrong Answer|Compilation Error|Time Limit Exceeded|Runtime Error>",
-  "feedback": "<one paragraph explanation>",
+  "feedback": "<one paragraph>",
   "improvements": ["suggestion 1", "suggestion 2"]
 }
 
-Scoring guide:
-- 90-100: Perfect, optimal time and space complexity
-- 70-89: Correct but not optimal
-- 50-69: Partially correct
-- 0-49: Wrong or incomplete`;
+Scoring: 90-100 perfect, 70-89 correct but suboptimal, 50-69 partially correct, 0-49 wrong.`;
 
     try {
-      const completion = await this.chatClient.chat.completions.create({
+      const completion = await this.chatComplete({
         messages: [{ role: 'user', content: prompt }],
-        model: MODELS.chat,
-        temperature: 0.2,
-        max_tokens: 800,
+        model: MODELS.chat, temperature: 0.2, max_tokens: 600,
         response_format: { type: 'json_object' },
       });
-      const rawText = completion.choices[0]?.message?.content || '{}';
-      const result = this.cleanAndParse(rawText);
-      if (!result) throw new Error('Parsed JSON was null');
+      const result = this.cleanAndParse(completion.choices[0]?.message?.content || '{}');
+      if (!result) throw new Error('null');
       return {
         score:        typeof result.score === 'number' ? result.score : 0,
-        verdict:      this.str(result.verdict,  'Wrong Answer') as EvaluationResult['verdict'],
+        verdict:      this.str(result.verdict, 'Wrong Answer') as EvaluationResult['verdict'],
         feedback:     this.str(result.feedback, 'Could not evaluate.'),
         improvements: this.strArr(result.improvements),
       };
     } catch (err) {
-      console.error('❌ Code Evaluation Error:', err);
-      return {
-        score: 0,
-        verdict: 'Wrong Answer',
-        feedback: 'Could not evaluate the submission. Please try again.',
-        improvements: ['Ensure your solution handles all edge cases.'],
-      };
+      console.error('❌ AI Code Evaluation Error:', err);
+      return { score: 0, verdict: 'Wrong Answer', feedback: 'Could not evaluate. Please try again.', improvements: [] };
+    }
+  }
+
+  // Generates brief AI feedback given Judge0 results
+  private async getCodeFeedback(
+    question: DSAQuestion,
+    code: string,
+    language: string,
+    score: number,
+    verdict: string,
+    results?: TestCaseResult[],
+  ): Promise<string> {
+    const failedCases = results?.filter(r => !r.passed).slice(0, 2) ?? [];
+    const failSummary = failedCases.length
+      ? `Failed cases: ${failedCases.map(r => `input="${r.input}" expected="${r.expectedOutput}" got="${r.actualOutput}"`).join('; ')}`
+      : '';
+
+    const prompt = `Problem: ${question.title}
+Verdict: ${verdict} (score ${score}/100). ${failSummary}
+Language: ${language}
+Code (first 800 chars): ${code.substring(0, 800)}
+
+Write 1-2 sentences of feedback for the candidate. Be specific and constructive. No markdown.`;
+
+    try {
+      const completion = await this.chatComplete({
+        messages: [{ role: 'user', content: prompt }],
+        model: MODELS.chat, temperature: 0.3, max_tokens: 150,
+      });
+      return completion.choices[0]?.message?.content?.trim() || (verdict === 'Accepted' ? 'Great solution!' : 'Review your logic against the failing test cases.');
+    } catch {
+      return verdict === 'Accepted' ? 'All test cases passed!' : 'Check your solution against the failing test cases.';
     }
   }
 
@@ -402,7 +792,7 @@ Return STRICT JSON only — no markdown, no extra text:
 action values: "CONTINUE" | "START_CODING" | "TERMINATE"`;
 
     try {
-      const completion = await this.chatClient.chat.completions.create({
+      const completion = await this.chatComplete({
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user',   content: userPrompt   },
@@ -463,7 +853,7 @@ Return STRICT JSON only:
 }`;
 
     try {
-      const completion = await this.chatClient.chat.completions.create({
+      const completion = await this.chatComplete({
         messages: [{ role: 'user', content: prompt }],
         model: MODELS.chat,
         temperature: 0.2,
@@ -512,7 +902,7 @@ Return STRICT JSON only:
 }`;
 
     try {
-      const completion = await this.chatClient.chat.completions.create({
+      const completion = await this.chatComplete({
         messages: [{ role: 'user', content: prompt }],
         model: MODELS.chat,
         temperature: 0.3,

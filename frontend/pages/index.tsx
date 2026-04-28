@@ -38,14 +38,8 @@ async function extractResumeText(file: File): Promise<string> {
   try {
     const formData = new FormData();
     formData.append('resume', file);
-    const res = await fetch(`${apiUrl}/api/interview/parse-resume`, {
-      method: 'POST',
-      body: formData,
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return data.text || '';
-    }
+    const res = await axios.post(`${apiUrl}/api/interview/parse-resume`, formData);
+    return res.data.text || '';
   } catch { /* fall through */ }
   // Fallback: just store filename as context hint
   return `Resume file: ${file.name}`;

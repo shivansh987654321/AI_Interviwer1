@@ -1,36 +1,43 @@
 import { Difficulty, DSAQuestion } from '../types/interview.types';
 import aiService from './ai.service';
+import { pickRandomQuestions, QuestionMeta } from '../data/question-bank';
 
 class QuestionService {
-  async generateQuestions(difficulty: Difficulty, count: number = 3): Promise<DSAQuestion[]> {
-    const questions = await Promise.all(
-      Array.from({ length: count }, () => aiService.generateDSAQuestion(difficulty))
-    );
-
+  async generateQuestions(difficulty: Difficulty, count: number = 2): Promise<DSAQuestion[]> {
+    const picked = pickRandomQuestions(difficulty, count * 2); // pick extras in case of dupes
     const seen = new Set<string>();
-    const deduped: DSAQuestion[] = [];
+    const results: DSAQuestion[] = [];
 
-    for (const q of questions) {
-      const key = q.title.toLowerCase().trim();
-      if (seen.has(key)) {
-        try {
-          const replacement = await aiService.generateDSAQuestion(difficulty);
-          deduped.push(replacement);
-          seen.add(replacement.title.toLowerCase().trim());
-        } catch {
-          deduped.push(q);
-        }
-      } else {
-        seen.add(key);
-        deduped.push(q);
+    for (const meta of picked) {
+      if (results.length >= count) break;
+      const key = meta.title.toLowerCase().trim();
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      try {
+        const q = await aiService.generateDSAQuestion(difficulty, meta);
+        results.push(q);
+      } catch {
+        // If a specific problem fails, skip it
       }
     }
 
-    return deduped;
+    // Fill remaining slots with AI-generated questions if bank ran short
+    while (results.length < count) {
+      try {
+        const q = await aiService.generateDSAQuestion(difficulty);
+        results.push(q);
+      } catch {
+        break;
+      }
+    }
+
+    return results;
   }
 
   async generateQuestion(difficulty: Difficulty): Promise<DSAQuestion> {
-    return aiService.generateDSAQuestion(difficulty);
+    const [meta] = pickRandomQuestions(difficulty, 1);
+    return aiService.generateDSAQuestion(difficulty, meta);
   }
 }
 

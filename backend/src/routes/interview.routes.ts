@@ -2,12 +2,24 @@ import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import multer from 'multer';
+import rateLimit from 'express-rate-limit';
 import aiService from '../services/ai.service';
 import questionService from '../services/question.service';
 import connectToDatabase from '../lib/db';
 import Interview from '../models/Interview';
 import { Difficulty, DSAQuestion, EvaluationResult } from '../types/interview.types';
+import { authenticate } from '../middleware/auth.middleware';
+
+// 100 req/min per IP — applied AFTER authenticate so 401 fires before 429
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'AI endpoint rate limit exceeded. Please slow down.' },
+});
 
 const router = Router();
 
@@ -47,8 +59,13 @@ const uploadResume = multer({
 // ---------------------------------------------------------------------------
 // FILE-BASED SESSION STORE
 // ---------------------------------------------------------------------------
-const SESSION_FILE = path.join(__dirname, '../../sessions.json');
+const SESSION_FILE = process.env.NODE_ENV === 'production'
+  ? path.join(os.tmpdir(), 'sessions.json')
+  : path.join(__dirname, '../../sessions.json');
 const SESSION_TTL_MS = (Number(process.env.SESSION_TTL_HOURS) || 24) * 60 * 60 * 1000;
+
+// Serialises all writes so concurrent requests never corrupt sessions.json
+let _writeLock: Promise<void> = Promise.resolve();
 
 interface SessionRecord {
   id: string;
@@ -89,23 +106,33 @@ const getSessions = (): Record<string, SessionRecord> => {
 };
 
 const saveSessionToFile = (session: SessionRecord): void => {
-  try {
-    const sessions = getSessions();
-    sessions[session.id] = session;
-    fs.writeFileSync(SESSION_FILE, JSON.stringify(sessions, null, 2));
-  } catch (e) { console.error('[Sessions] File Save Failed', e); }
+  _writeLock = _writeLock.then(() => {
+    try {
+      const sessions = getSessions();
+      sessions[session.id] = session;
+      // Write to temp file then rename — atomic on Linux/macOS
+      const tmp = SESSION_FILE + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(sessions, null, 2));
+      fs.renameSync(tmp, SESSION_FILE);
+    } catch (e) {
+      console.error('[Sessions] File Save Failed', e);
+    }
+  });
 };
 
 const getDuration = (level: string): number => {
-  if (level === 'easy') return 900;
-  if (level === 'hard') return 2700;
-  return 1800;
+  if (level === 'easy')   return 2700;  // 45 min
+  if (level === 'medium') return 3600;  // 60 min
+  if (level === 'hard')   return 7200;  // 120 min
+  return 3600;
 };
+
+const QUESTION_COUNT = 2; // 2 questions per round
 
 // ===========================================================================
 // 0a. TTS — ElevenLabs primary, falls back to OpenAI TTS, then browser speech
 // ===========================================================================
-router.post('/tts', async (req: Request, res: Response) => {
+router.post('/tts', authenticate, aiLimiter, async (req: Request, res: Response) => {
   try {
     const { text, voice } = req.body;
     if (!text || typeof text !== 'string') {
@@ -130,7 +157,7 @@ router.post('/tts', async (req: Request, res: Response) => {
 // ===========================================================================
 // 0c. PARSE RESUME — extract text from PDF / DOCX / TXT
 // ===========================================================================
-router.post('/parse-resume', (req: Request, res: Response, next) => {
+router.post('/parse-resume', authenticate, (req: Request, res: Response, next) => {
   uploadResume.single('resume')(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message || 'File upload rejected' });
     next();
@@ -176,7 +203,7 @@ router.post('/parse-resume', (req: Request, res: Response, next) => {
 // ===========================================================================
 // 0b. STT — uses ai.service (OpenAI / Groq Whisper)
 // ===========================================================================
-router.post('/stt', uploadAudio.single('audio'), async (req: Request, res: Response) => {
+router.post('/stt', authenticate, aiLimiter, uploadAudio.single('audio'), async (req: Request, res: Response) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'audio file required' });
 
@@ -212,9 +239,13 @@ router.post('/stt', uploadAudio.single('audio'), async (req: Request, res: Respo
 // ===========================================================================
 // 1. CREATE INTERVIEW
 // ===========================================================================
-router.post('/create', async (req: Request, res: Response) => {
+router.post('/create', authenticate, aiLimiter, async (req: Request, res: Response) => {
   try {
-    const difficulty = ((req.body.difficulty as string) || 'medium').toLowerCase() as Difficulty;
+    const difficultyRaw = req.body.difficulty;
+    if (!difficultyRaw || typeof difficultyRaw !== 'string') {
+      return res.status(400).json({ error: 'difficulty is required and must be easy, medium, or hard' });
+    }
+    const difficulty = difficultyRaw.toLowerCase() as Difficulty;
     if (!['easy', 'medium', 'hard'].includes(difficulty)) {
       return res.status(400).json({ error: 'difficulty must be easy, medium, or hard' });
     }
@@ -222,7 +253,7 @@ router.post('/create', async (req: Request, res: Response) => {
     const sessionId = uuidv4();
     const duration  = getDuration(difficulty);
     console.log(`[CREATE] Session: ${sessionId} | Difficulty: ${difficulty}`);
-    const questions = await questionService.generateQuestions(difficulty, 3);
+    const questions = await questionService.generateQuestions(difficulty, QUESTION_COUNT);
     const [q1] = questions;
     const session: SessionRecord = {
       id: sessionId, difficulty, startTime: new Date(),
@@ -239,13 +270,54 @@ router.post('/create', async (req: Request, res: Response) => {
 });
 
 // ===========================================================================
+// 2a. RUN CODE — executes against visible test cases only (no submission)
+// ===========================================================================
+router.post('/run', authenticate, aiLimiter, async (req: Request, res: Response) => {
+  try {
+    const { sessionId, code, language } = req.body;
+    if (!sessionId || !code || !language) {
+      return res.status(400).json({ error: 'Missing: sessionId, code, language' });
+    }
+    if (typeof code === 'string' && code.length > 100_000) {
+      return res.status(400).json({ error: 'Code too large.' });
+    }
+
+    const sessions = getSessions();
+    const session  = sessions[sessionId];
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    const question = session.question as import('../types/interview.types').DSAQuestion;
+
+    // Only run against first 2 visible test cases
+    const visibleCases = (question.testCases ?? []).slice(0, 2);
+    const executableCases = visibleCases.filter((tc: import('../types/interview.types').DSATestCase) => tc.stdin !== undefined);
+
+    if (executableCases.length === 0) {
+      return res.json({
+        results: [],
+        message: 'No executable test cases available — Judge0 not configured or question lacks stdin data.',
+      });
+    }
+
+    const results = await aiService.runTestCases(code, language, executableCases);
+    res.json({ results });
+  } catch (e) {
+    console.error('[RUN] Error:', e);
+    res.status(500).json({ error: 'Code execution failed' });
+  }
+});
+
+// ===========================================================================
 // 2. SUBMIT CODE
 // ===========================================================================
-router.post('/submit', async (req: Request, res: Response) => {
+router.post('/submit', authenticate, async (req: Request, res: Response) => {
   try {
     const { sessionId, code, language, userId } = req.body;
     if (!sessionId || !code || !language) {
       return res.status(400).json({ error: 'Missing: sessionId, code, language' });
+    }
+    if (typeof code === 'string' && code.length > 100_000) {
+      return res.status(400).json({ error: 'Code too large. Maximum 100 KB allowed.' });
     }
     const sessions = getSessions();
     const session  = sessions[sessionId];
@@ -270,7 +342,14 @@ router.post('/submit', async (req: Request, res: Response) => {
       submittedAt: new Date(),
     });
 
-    const responseData: Record<string, unknown> = { ...result };
+    const responseData: Record<string, unknown> = {
+      score:        result.score,
+      verdict:      result.verdict,
+      feedback:     result.feedback,
+      improvements: result.improvements,
+      testCases:    result.testCases ?? [],
+    };
+
     const passing = result.score >= 60 || result.verdict === 'Accepted';
 
     if (passing) {
@@ -280,14 +359,18 @@ router.post('/submit', async (req: Request, res: Response) => {
         session.question = session.questions[nextIndex];
         responseData.nextQuestion  = session.question;
         responseData.questionIndex = nextIndex;
-        responseData.message = 'Correct! Moving to the next question…';
+        responseData.message = `✅ ${result.testCases ? `${result.testCases.filter((t: any) => t.passed).length}/${result.testCases.length} test cases passed!` : 'Correct!'} Moving to next question…`;
       } else {
-        session.status       = 'completed';
+        session.status         = 'completed';
         responseData.completed = true;
-        responseData.message = 'All questions completed!';
+        responseData.message   = '🎉 All questions completed!';
       }
     } else {
-      responseData.message = `Score ${result.score}/100 — keep trying!`;
+      const passedCount = (result.testCases ?? []).filter((t: any) => t.passed).length;
+      const totalCount  = (result.testCases ?? []).length;
+      responseData.message = totalCount > 0
+        ? `${passedCount}/${totalCount} test cases passed — fix the failing cases and resubmit.`
+        : `Score ${result.score}/100 — keep trying!`;
     }
 
     saveSessionToFile(session);
@@ -301,7 +384,7 @@ router.post('/submit', async (req: Request, res: Response) => {
 // ===========================================================================
 // 5. REPORT — must be BEFORE /:sessionId
 // ===========================================================================
-router.get('/report/:sessionId', async (req: Request, res: Response) => {
+router.get('/report/:sessionId', authenticate, async (req: Request, res: Response) => {
   try {
     await connectToDatabase();
     const interview = await Interview.findOne({ sessionId: req.params.sessionId }).lean();
@@ -323,7 +406,7 @@ router.get('/report/:sessionId', async (req: Request, res: Response) => {
 // ===========================================================================
 // 6. HISTORY — must be BEFORE /:sessionId
 // ===========================================================================
-router.get('/history/:userId', async (req: Request, res: Response) => {
+router.get('/history/:userId', authenticate, async (req: Request, res: Response) => {
   if (!req.params.userId) return res.status(400).json({ error: 'userId required' });
   try {
     await connectToDatabase();
@@ -341,7 +424,7 @@ router.get('/history/:userId', async (req: Request, res: Response) => {
 // ===========================================================================
 // 3. GET SESSION — catch-all, MUST be last
 // ===========================================================================
-router.get('/:sessionId', (req: Request, res: Response) => {
+router.get('/:sessionId', authenticate, (req: Request, res: Response) => {
   const session = getSessions()[req.params.sessionId];
   if (!session) return res.status(404).json({ error: 'Session not found' });
   res.json({ session });
@@ -350,7 +433,7 @@ router.get('/:sessionId', (req: Request, res: Response) => {
 // ===========================================================================
 // 4. COMPLETE
 // ===========================================================================
-router.post('/complete/:sessionId', (req: Request, res: Response) => {
+router.post('/complete/:sessionId', authenticate, (req: Request, res: Response) => {
   const sessions = getSessions();
   if (!sessions[req.params.sessionId]) {
     return res.status(404).json({ error: 'Session not found' });

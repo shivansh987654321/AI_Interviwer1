@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: ai-interviewer-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MOCK_AI
+        value: false
+      - key: SESSION_TTL_HOURS
+        value: 24
+      - key: GROQ_API_KEY
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false

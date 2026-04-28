@@ -3,7 +3,9 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
+import { clerkMiddleware } from '@clerk/express';
 import interviewRoutes from './routes/interview.routes';
+import userRoutes from './routes/user.routes';
 
 dotenv.config();
 
@@ -19,42 +21,44 @@ app.use(helmet({
 // ===============================
 // RATE LIMITING
 // ===============================
-// Global: 200 requests per 15 minutes per IP
+// Global: configurable (default 1000) requests per 15 minutes per IP
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: Number(process.env.GLOBAL_RATE_LIMIT) || 1000,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later.' },
 });
 app.use('/api/', globalLimiter);
 
-// Strict limiter for expensive AI endpoints (20 req/min per IP)
-const aiLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'AI endpoint rate limit exceeded. Please slow down.' },
-});
-app.use('/api/interview/tts', aiLimiter);
-app.use('/api/interview/stt', aiLimiter);
-app.use('/api/interview/create', aiLimiter);
-
 // ===============================
 // CORS
 // ===============================
-const allowedOrigins = process.env.FRONTEND_URL
-  ? [process.env.FRONTEND_URL, 'http://localhost:3000', 'http://localhost:3001']
-  : ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000'];
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://127.0.0.1:3000',
+  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
+];
 
 app.use(cors({
-  origin: allowedOrigins,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (curl, Postman, same-origin)
+    if (!origin) return callback(null, true);
+    // Allow any Vercel preview/production URL
+    if (origin.endsWith('.vercel.app') || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
   credentials: true,
 }));
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+// Clerk — populates req.auth on every request (does NOT enforce auth by itself)
+app.use(clerkMiddleware());
 
 // ===============================
 // HEALTH CHECK
@@ -67,8 +71,9 @@ app.get('/health', (req: Request, res: Response) => {
 // MOUNT ROUTES
 // ===============================
 app.use('/api/interview', interviewRoutes);
+app.use('/api/user', userRoutes);
 
-console.log('✅ Routes mounted: /api/interview');
+console.log('✅ Routes mounted: /api/interview, /api/user');
 
 // ===============================
 // ERROR HANDLING

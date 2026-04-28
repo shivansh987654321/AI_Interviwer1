@@ -12,13 +12,28 @@ export enum Difficulty {
    QUESTION
 ========================= */
 
+export interface StarterCode {
+  javascript: string;
+  python: string;
+  java: string;
+  cpp: string;
+}
+
+export interface DSATestCase {
+  input: string;           // human-readable display
+  output: string;          // human-readable display
+  stdin?: string;          // actual stdin for Judge0
+  expectedOutput?: string; // actual expected stdout for Judge0
+}
+
 export interface DSAQuestion {
   title: string;
   description: string;
   difficulty: string;
   constraints: string[];
-  testCases: { input: string; output: string }[];
+  testCases: DSATestCase[];
   functionSignature: string;
+  starterCode?: StarterCode;
 }
 
 /* =========================
@@ -170,6 +185,9 @@ export interface TestCaseResult {
   expectedOutput: string;
   actualOutput: string;
   passed: boolean;
+  status?: string;
+  time?: string | null;
+  memory?: number | null;
 }
 
 export interface EvaluationResult {

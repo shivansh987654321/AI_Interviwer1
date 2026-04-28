@@ -156,9 +156,14 @@ export const initializeInterviewSocket = (io: Server) => {
           remainingSeconds,
           state.tabSwitchCount
         );
-        state.history.push({ role: 'assistant', content: aiResponse.text });
+
+        // Re-read state after async call — phase may have changed (timer fired during AI call)
+        const freshState = activeSessions.get(sessionId);
+        if (!freshState || freshState.phase === 'coding') return;
+
+        freshState.history.push({ role: 'assistant', content: aiResponse.text });
         if (aiResponse.difficulty_level) {
-          state.difficulty_level = aiResponse.difficulty_level as DifficultyLevel;
+          freshState.difficulty_level = aiResponse.difficulty_level as DifficultyLevel;
         }
 
         socket.emit('ai_speak', {
@@ -168,7 +173,7 @@ export const initializeInterviewSocket = (io: Server) => {
         });
 
         if (aiResponse.action === 'START_CODING') {
-          state.phase = 'coding';
+          freshState.phase = 'coding';
           setTimeout(() => {
             io.to(sessionId).emit('start_coding_phase');
           }, 4000);
@@ -179,6 +184,27 @@ export const initializeInterviewSocket = (io: Server) => {
             reason: 'tab_switch_violation',
             message: aiResponse.text,
           });
+
+          // Persist a terminated record so data isn't lost
+          const resolvedUserId = socketUserId || freshState.userId || 'GUEST_USER';
+          try {
+            await connectToDatabase();
+            await Interview.create({
+              userId:       resolvedUserId,
+              sessionId,
+              score:        0,
+              feedback:     'Interview terminated due to integrity violation.',
+              verbatim:     freshState.history,
+              improvements: [],
+              verdict:      'Terminated',
+              cheatingFlags: freshState.cheatingFlags,
+              tabSwitches:  freshState.tabSwitchCount,
+              date:         new Date(),
+            });
+          } catch (dbErr) {
+            console.error('❌ DB Save Failed on TERMINATE:', dbErr);
+          }
+          activeSessions.delete(sessionId);
         }
       } catch (e) {
         console.error('AI Response Error:', e);
@@ -262,7 +288,13 @@ export const initializeInterviewSocket = (io: Server) => {
       try {
         socket.emit('feedback_processing', { message: 'Analyzing performance...' });
 
-        const report = await aiService.generateFinalFeedback(state.history, state.codingResult);
+        const reportTimeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Report generation timed out after 30s')), 30_000)
+        );
+        const report = await Promise.race([
+          aiService.generateFinalFeedback(state.history, state.codingResult),
+          reportTimeout,
+        ]);
         console.log(`📊 Report Generated. Score: ${report.score}/100`);
 
         // Emit results to client immediately — don't block on DB save

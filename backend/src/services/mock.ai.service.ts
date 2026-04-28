@@ -11,7 +11,8 @@
  *   Add MOCK_AI=true to your backend/.env file while developing.
  */
 
-import { DSAQuestion, EvaluationResult } from '../types/interview.types';
+import { DSAQuestion, DSATestCase, EvaluationResult, TestCaseResult } from '../types/interview.types';
+import type { QuestionMeta } from '../data/question-bank';
 
 class MockAIService {
   // Minimum characters a submission must have to count as a real attempt
@@ -41,7 +42,7 @@ class MockAIService {
   // ----------------------------------------------------------------
   // PHASE 4: PROBLEM-SOLVING
   // ----------------------------------------------------------------
-  async generateDSAQuestion(level: string): Promise<DSAQuestion> {
+  async generateDSAQuestion(level: string, _meta?: QuestionMeta): Promise<DSAQuestion> {
     const questions: Record<string, DSAQuestion> = {
       easy: {
         title: 'Two Sum [MOCK]',
@@ -81,6 +82,20 @@ class MockAIService {
       },
     };
     return questions[level] ?? questions['medium'];
+  }
+
+  // ----------------------------------------------------------------
+  // PISTON STUB (not used in mock mode, but required for type compatibility)
+  // ----------------------------------------------------------------
+  async executeCode(): Promise<never> {
+    throw new Error('Local execution not available in mock mode');
+  }
+
+  async runTestCases(_code: string, _language: string, testCases: DSATestCase[]): Promise<TestCaseResult[]> {
+    return testCases.map(tc => ({
+      input: tc.input, expectedOutput: tc.expectedOutput ?? tc.output,
+      actualOutput: '[MOCK] 0 1', passed: true, status: 'Accepted',
+    }));
   }
 
   // ----------------------------------------------------------------

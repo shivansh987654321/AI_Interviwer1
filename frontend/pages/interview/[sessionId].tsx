@@ -9,22 +9,49 @@ import CameraFeed from '../../components/CameraFeed';
 import AIAvatar from '../../components/AIAvatar';
 import type { Socket } from 'socket.io-client';
 
+interface TestCase {
+  input: string;
+  output: string;
+  stdin?: string;
+  expectedOutput?: string;
+}
+
+interface TestCaseResult {
+  input: string;
+  expectedOutput: string;
+  actualOutput: string;
+  passed: boolean;
+  status?: string;
+  time?: string | null;
+  memory?: number | null;
+}
+
+interface StarterCode {
+  javascript: string;
+  python: string;
+  java: string;
+  cpp: string;
+}
+
 interface Question {
   title: string;
   description: string;
-  testCases?: { input: string; output: string }[];
+  testCases?: TestCase[];
   difficulty?: string;
+  constraints?: string[];
+  starterCode?: StarterCode;
 }
 
-const TEMPLATES: Record<string, string> = {
-  javascript: `/**\n * Write your solution below\n */\nfunction solution(nums) {\n  // your code here\n  return 0;\n}`,
-  python:     `def solution(nums):\n    # your code here\n    return 0`,
-  java:       `class Solution {\n    public int solution(int[] nums) {\n        // your code here\n        return 0;\n    }\n}`,
-  cpp:        `class Solution {\npublic:\n    int solution(vector<int>& nums) {\n        // your code here\n        return 0;\n    }\n};`,
+const FALLBACK_TEMPLATES: Record<string, string> = {
+  javascript: `const lines = require('fs').readFileSync('/dev/stdin', 'utf8').trim().split('\\n');\n\n// ─── YOUR SOLUTION ───────────────────────────────────────────────\nfunction solution(lines) {\n  // write your solution here\n  \n}\n// ─────────────────────────────────────────────────────────────────\n\nconsole.log(solution(lines));`,
+  python:     `import sys\nlines = sys.stdin.read().strip().split('\\n')\n\n# ─── YOUR SOLUTION ───────────────────────────────────────────────\ndef solution(lines):\n    # write your solution here\n    pass\n# ─────────────────────────────────────────────────────────────────\n\nprint(solution(lines))`,
+  java:       `import java.util.*;\nclass Main {\n    // ─── YOUR SOLUTION ───────────────────────────────────────────────\n    // add your methods here\n    // ─────────────────────────────────────────────────────────────────\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        // parse and solve\n    }\n}`,
+  cpp:        `#include<bits/stdc++.h>\nusing namespace std;\n// ─── YOUR SOLUTION ───────────────────────────────────────────────\n// add your solution here\n// ─────────────────────────────────────────────────────────────────\nint main(){\n    // parse input and output result\n    return 0;\n}`,
 };
 
 const LANGUAGES = ['javascript', 'python', 'java', 'cpp'] as const;
 const TIME_WARNING_THRESHOLD = 300;
+const TOTAL_QUESTIONS = 2;
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
 
 const DIFF_COLORS: Record<string, string> = {
@@ -38,17 +65,26 @@ const DIFFICULTY_LEVELS: Record<string, { label: string; color: string; progress
   hard:   { label: 'Hard',         color: '#f87171',  progress: 90 },
 };
 
+// Verdict color
+const VERDICT_COLOR: Record<string, string> = {
+  'Accepted':            '#4ade80',
+  'Wrong Answer':        '#f87171',
+  'Compilation Error':   '#fb923c',
+  'Time Limit Exceeded': '#facc15',
+  'Runtime Error':       '#c084fc',
+};
+
 // ---- TOAST ----
 function Toast({ message, type, onDismiss }: { message: string; type: string; onDismiss: () => void }) {
-  useEffect(() => { const t = setTimeout(onDismiss, 4000); return () => clearTimeout(t); }, [onDismiss]);
+  useEffect(() => { const t = setTimeout(onDismiss, 5000); return () => clearTimeout(t); }, [onDismiss]);
   const accent = type === 'success' ? '#4ade80' : type === 'error' ? '#f87171' : '#60a5fa';
   return (
     <div style={{
       position: 'fixed', bottom: 100, right: 24,
-      background: 'rgba(10,10,16,0.95)', backdropFilter: 'blur(16px)',
+      background: 'rgba(10,10,16,0.97)', backdropFilter: 'blur(16px)',
       border: `1px solid rgba(255,255,255,0.07)`, borderLeft: `3px solid ${accent}`,
       color: '#fff', padding: '10px 14px', borderRadius: 10,
-      zIndex: 9999, maxWidth: 320, boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+      zIndex: 9999, maxWidth: 360, boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
       display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem',
     }}>
       <span style={{ flex: 1 }}>{message}</span>
@@ -64,7 +100,7 @@ function LangConfirmModal({ targetLang, onConfirm, onCancel }: { targetLang: str
       <div style={{ background: 'rgba(15,15,20,0.98)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: '28px 32px', textAlign: 'center', color: '#fff', maxWidth: 340 }}>
         <div style={{ fontSize: '1.8rem', marginBottom: 10 }}>🔄</div>
         <h3 style={{ margin: '0 0 8px', fontSize: '1.05rem' }}>Switch to {targetLang.toUpperCase()}?</h3>
-        <p style={{ color: 'rgba(255,255,255,0.35)', marginBottom: 20, fontSize: '0.85rem' }}>Current code will be reset.</p>
+        <p style={{ color: 'rgba(255,255,255,0.35)', marginBottom: 20, fontSize: '0.85rem' }}>Current code will be reset to the new language template.</p>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
           <button onClick={onCancel} style={{ padding: '8px 18px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)', borderRadius: 8, cursor: 'pointer' }}>Cancel</button>
           <button onClick={onConfirm} style={{ padding: '8px 18px', background: 'linear-gradient(135deg,#7c3aed,#a855f7)', border: 'none', color: '#fff', borderRadius: 8, cursor: 'pointer', fontWeight: 700 }}>Switch</button>
@@ -74,6 +110,152 @@ function LangConfirmModal({ targetLang, onConfirm, onCancel }: { targetLang: str
   );
 }
 
+// ---- TEST CASE RESULT ROW ----
+function TestResultRow({ result, index }: { result: TestCaseResult; index: number }) {
+  const [open, setOpen] = useState(true);
+  const statusColor = result.passed ? '#4ade80' : result.status === 'Compilation Error' ? '#fb923c' : result.status === 'Time Limit Exceeded' ? '#facc15' : '#f87171';
+
+  return (
+    <div style={{
+      border: `1px solid ${result.passed ? 'rgba(74,222,128,0.2)' : 'rgba(248,113,113,0.2)'}`,
+      borderRadius: 10, overflow: 'hidden', background: result.passed ? 'rgba(74,222,128,0.03)' : 'rgba(248,113,113,0.03)',
+    }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+          padding: '7px 12px', background: 'none', border: 'none', cursor: 'pointer',
+          color: '#fff', fontSize: '0.82rem',
+        }}
+      >
+        <span style={{ color: statusColor, fontWeight: 700, fontSize: '1rem', lineHeight: 1 }}>
+          {result.passed ? '✓' : '✗'}
+        </span>
+        <span style={{ fontWeight: 600 }}>Case {index + 1}</span>
+        {result.status && !result.passed && (
+          <span style={{ color: statusColor, fontSize: '0.72rem', fontWeight: 600, marginLeft: 4 }}>
+            {result.status}
+          </span>
+        )}
+        {result.time && (
+          <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.68rem', marginLeft: 'auto' }}>
+            {result.time}s
+          </span>
+        )}
+        <span style={{ color: 'rgba(255,255,255,0.2)', marginLeft: result.time ? 0 : 'auto', fontSize: '0.7rem' }}>
+          {open ? '▲' : '▼'}
+        </span>
+      </button>
+
+      {open && (
+        <div style={{ padding: '0 12px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <ResultField label="Input" value={result.input} />
+          <ResultField label="Expected" value={result.expectedOutput} color="#4ade80" />
+          <ResultField label="Got" value={result.actualOutput} color={result.passed ? '#4ade80' : '#f87171'} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResultField({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>{label}</div>
+      <pre style={{
+        margin: 0, padding: '4px 8px',
+        background: 'rgba(255,255,255,0.04)', borderRadius: 6,
+        fontFamily: "'Fira Code',monospace", fontSize: '0.78rem',
+        color: color || 'rgba(255,255,255,0.7)',
+        whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 80, overflow: 'auto',
+      }}>
+        {value || '(empty)'}
+      </pre>
+    </div>
+  );
+}
+
+// ---- RESULTS PANEL ----
+function ResultsPanel({
+  runResults, submitResults, verdict, score, feedback, isRunning, isSubmitting,
+}: {
+  runResults:     TestCaseResult[] | null;
+  submitResults:  TestCaseResult[] | null;
+  verdict?:       string;
+  score?:         number;
+  feedback?:      string;
+  isRunning:      boolean;
+  isSubmitting:   boolean;
+}) {
+  const [tab, setTab] = useState<'run' | 'submit'>('run');
+
+  useEffect(() => { if (submitResults) setTab('submit'); }, [submitResults]);
+  useEffect(() => { if (runResults)    setTab('run'); },    [runResults]);
+
+  const activeResults = tab === 'run' ? runResults : submitResults;
+  const isLoading     = tab === 'run' ? isRunning  : isSubmitting;
+
+  return (
+    <div style={{
+      borderTop: '1px solid rgba(255,255,255,0.07)',
+      background: 'rgba(5,5,8,0.9)', display: 'flex', flexDirection: 'column',
+      height: '100%', minHeight: 0,
+    }}>
+      {/* Tab bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '0 12px', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
+        {(['run', 'submit'] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)} style={{
+            background: 'none', border: 'none', padding: '7px 14px', cursor: 'pointer',
+            fontSize: '0.78rem', fontWeight: tab === t ? 700 : 400,
+            color: tab === t ? '#fff' : 'rgba(255,255,255,0.35)',
+            borderBottom: tab === t ? '2px solid #a855f7' : '2px solid transparent',
+          }}>
+            {t === 'run' ? '▶ Run Results' : '📤 Submit Results'}
+            {t === 'submit' && verdict && (
+              <span style={{ marginLeft: 6, color: VERDICT_COLOR[verdict] || '#fff', fontSize: '0.7rem' }}>
+                {verdict}
+              </span>
+            )}
+          </button>
+        ))}
+        {typeof score === 'number' && tab === 'submit' && (
+          <span style={{ marginLeft: 'auto', fontSize: '0.78rem', color: score >= 60 ? '#4ade80' : '#f87171', fontWeight: 700 }}>
+            {score}/100
+          </span>
+        )}
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {isLoading ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'rgba(255,255,255,0.35)', fontSize: '0.85rem', padding: '10px 0' }}>
+            <div style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.1)', borderTopColor: '#a855f7', borderRadius: '50%', animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
+            {tab === 'run' ? 'Running test cases…' : 'Submitting and evaluating…'}
+          </div>
+        ) : !activeResults || activeResults.length === 0 ? (
+          <div style={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.82rem', padding: '10px 0', textAlign: 'center' }}>
+            {tab === 'run' ? 'Click "Run Code" to test against sample cases' : 'Click "Submit" to evaluate against all test cases'}
+          </div>
+        ) : (
+          <>
+            {activeResults.map((r, i) => <TestResultRow key={i} result={r} index={i} />)}
+            {tab === 'submit' && feedback && (
+              <div style={{
+                background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
+                borderRadius: 10, padding: '10px 12px', marginTop: 4,
+              }}>
+                <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>Feedback</div>
+                <p style={{ margin: 0, fontSize: '0.82rem', color: 'rgba(255,255,255,0.6)', lineHeight: 1.6 }}>{feedback}</p>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 // ---- MAIN PAGE ----
 export default function InterviewPage() {
   const router     = useRouter();
@@ -81,12 +263,14 @@ export default function InterviewPage() {
   const { user }   = useUser();
 
   const [question, setQuestion]     = useState<Question | null>(null);
-  const [code, setCode]             = useState(TEMPLATES.javascript);
+  const [starterCodeMap, setStarterCodeMap] = useState<Partial<StarterCode> | null>(null);
+  const [code, setCode]             = useState(FALLBACK_TEMPLATES.javascript);
   const [language, setLanguage]     = useState('javascript');
   const [timeLeft, setTimeLeft]     = useState(0);
   const [isCodingStarted, setIsCodingStarted] = useState(false);
   const [loading, setLoading]       = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [running, setRunning]       = useState(false);
   const [routerReady, setRouterReady] = useState(false);
   const [aiSpeaking, setAiSpeaking] = useState(false);
   const [toast, setToast]           = useState<{ message: string; type: string } | null>(null);
@@ -96,32 +280,58 @@ export default function InterviewPage() {
   const [interviewCompleted, setInterviewCompleted] = useState(false);
   const [difficultyLevel, setDifficultyLevel] = useState('warmup');
   const [resumeContext] = useState<string | undefined>(() => {
-    if (typeof window !== 'undefined') {
-      return sessionStorage.getItem('resumeContext') || undefined;
-    }
+    if (typeof window !== 'undefined') return sessionStorage.getItem('resumeContext') || undefined;
   });
 
-  const socketRef = useRef<Socket | null>(null);
+  // Results state
+  const [runResults,    setRunResults]    = useState<TestCaseResult[] | null>(null);
+  const [submitResults, setSubmitResults] = useState<TestCaseResult[] | null>(null);
+  const [submitVerdict, setSubmitVerdict] = useState<string | undefined>();
+  const [submitScore,   setSubmitScore]   = useState<number | undefined>();
+  const [submitFeedback, setSubmitFeedback] = useState<string | undefined>();
+  const [showResults, setShowResults]     = useState(false);
+
+  const socketRef     = useRef<Socket | null>(null);
+  const languageRef   = useRef(language);
+  languageRef.current = language; // always in sync, no re-renders
 
   useEffect(() => { if (router.isReady) setRouterReady(true); }, [router.isReady]);
+
+  const loadQuestion = useCallback((q: Question) => {
+    setQuestion(q);
+    setStarterCodeMap(q.starterCode ?? null);
+    setRunResults(null);
+    setSubmitResults(null);
+    setSubmitVerdict(undefined);
+    setSubmitScore(undefined);
+    setSubmitFeedback(undefined);
+  }, []);
 
   useEffect(() => {
     if (!sessionId || !routerReady) return;
     axios.get(`${apiUrl}/api/interview/${sessionId}`)
       .then(res => {
         const s = res.data.session;
-        setQuestion(s.question);
-        setTimeLeft(s.duration || 1800);
+        loadQuestion(s.question);
+        setTimeLeft(s.duration || 3600);
         setLoading(false);
       })
       .catch(() => {
         showToast('Failed to load session.', 'error');
         setLoading(false);
       });
-  }, [sessionId, routerReady]);
+  }, [sessionId, routerReady, loadQuestion]);
+
+  // When question changes (starterCodeMap updates), reset the editor to the question's starter code
+  // for the currently selected language. Language switches are handled by confirmLanguageSwitch.
+  useEffect(() => {
+    if (starterCodeMap) {
+      setCode((starterCodeMap as any)[languageRef.current] || FALLBACK_TEMPLATES[languageRef.current]);
+    }
+  }, [starterCodeMap]);
 
   useEffect(() => {
-    if (!isCodingStarted || timeLeft <= 0) return;
+    if (!isCodingStarted) return;
     const t = setInterval(() => {
       setTimeLeft(prev => {
         if (prev === TIME_WARNING_THRESHOLD) showToast('⚠️ 5 minutes remaining!', 'info');
@@ -155,26 +365,59 @@ export default function InterviewPage() {
 
   const confirmLanguageSwitch = () => {
     if (!pendingLang) return;
-    setLanguage(pendingLang); setCode(TEMPLATES[pendingLang]); setPendingLang(null);
+    const template = starterCodeMap ? ((starterCodeMap as any)[pendingLang] || FALLBACK_TEMPLATES[pendingLang]) : FALLBACK_TEMPLATES[pendingLang];
+    setLanguage(pendingLang);
+    setCode(template);
+    setPendingLang(null);
+  };
+
+  const handleRun = async () => {
+    if (!code.trim()) { showToast('Write some code first.', 'error'); return; }
+    setRunning(true);
+    setShowResults(true);
+    setRunResults(null);
+    try {
+      const res = await axios.post(`${apiUrl}/api/interview/run`, { sessionId, code, language });
+      setRunResults(res.data.results ?? []);
+      if ((res.data.results ?? []).length === 0) {
+        showToast(res.data.message || 'No executable test cases available.', 'info');
+      }
+    } catch {
+      showToast('Run failed. Check your code and try again.', 'error');
+      setRunResults([]);
+    } finally {
+      setRunning(false);
+    }
   };
 
   const handleSubmit = async () => {
     if (!code.trim()) { showToast('Write some code first.', 'error'); return; }
     if (interviewCompleted) { showToast('Interview already completed!', 'info'); return; }
     setSubmitting(true);
+    setShowResults(true);
+    setSubmitResults(null);
     try {
       const res = await axios.post(`${apiUrl}/api/interview/submit`, { sessionId, code, language });
       socketRef.current?.emit('submit_code_result', { sessionId, result: res.data });
+
+      setSubmitVerdict(res.data.verdict);
+      setSubmitScore(res.data.score);
+      setSubmitFeedback(res.data.feedback);
+      setSubmitResults(res.data.testCases ?? []);
+
       if (res.data.nextQuestion) {
-        showToast('✅ Correct! Moving to next question.', 'success');
-        setQuestion(res.data.nextQuestion);
-        setCode(TEMPLATES[language]);
+        showToast(res.data.message || '✅ Moving to next question.', 'success');
+        loadQuestion(res.data.nextQuestion);
+        setCode(
+          res.data.nextQuestion.starterCode?.[language] ||
+          FALLBACK_TEMPLATES[language]
+        );
         setQuestionIndex(res.data.questionIndex ?? questionIndex + 1);
       } else if (res.data.completed) {
         setInterviewCompleted(true);
         showToast('🎉 All done! Click "Finish" to get your report.', 'success');
       } else {
-        showToast(res.data.message || 'Try again!', 'info');
+        showToast(res.data.message || 'Not all test cases passed. Try again!', 'info');
       }
     } catch (err: any) {
       if (err.response?.status === 409) {
@@ -191,7 +434,7 @@ export default function InterviewPage() {
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#050508', color: 'rgba(255,255,255,0.4)', gap: 12, fontFamily: 'sans-serif' }}>
       <div style={{ width: 30, height: 30, border: '2px solid rgba(255,255,255,0.08)', borderTopColor: '#a855f7', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-      <p style={{ margin: 0 }}>Initializing Interview...</p>
+      <p style={{ margin: 0 }}>Initializing Interview…</p>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
@@ -199,6 +442,7 @@ export default function InterviewPage() {
   if (!sessionId || typeof sessionId !== 'string') return null;
 
   const diffInfo = DIFFICULTY_LEVELS[difficultyLevel] || DIFFICULTY_LEVELS.warmup;
+  const visibleTestCases = (question?.testCases ?? []).slice(0, 2);
 
   return (
     <div className="root">
@@ -239,20 +483,29 @@ export default function InterviewPage() {
         <div className="header-right">
           {isCodingStarted && (
             <>
-              <div className="q-counter">Q {questionIndex + 1} / 3</div>
+              <div className="q-counter">Q {questionIndex + 1} / {TOTAL_QUESTIONS}</div>
               <div className="coding-timer" style={{ color: timerColor }}>
                 ⏱ {formatTime(timeLeft)}
                 {timeExpired && <span className="expired-tag">TIME UP</span>}
               </div>
-              <select value={language} onChange={handleLanguageChange} className="lang-sel" disabled={!isCodingStarted}>
+              <select value={language} onChange={handleLanguageChange} className="lang-sel">
                 {LANGUAGES.map(l => (
-                  <option key={l} value={l}>{l.charAt(0).toUpperCase() + l.slice(1)}</option>
+                  <option key={l} value={l}>{l === 'cpp' ? 'C++' : l.charAt(0).toUpperCase() + l.slice(1)}</option>
                 ))}
               </select>
-              <button onClick={handleSubmit} disabled={submitting || !isCodingStarted || !!pendingLang} className="submit-btn">
-                {submitting
-                  ? <><span className="spin-sm" /> Evaluating...</>
-                  : 'Submit Solution'}
+              <button
+                onClick={handleRun}
+                disabled={running || submitting || !!pendingLang}
+                className="run-btn"
+              >
+                {running ? <><span className="spin-sm" /> Running…</> : '▶ Run'}
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={submitting || running || !!pendingLang}
+                className="submit-btn"
+              >
+                {submitting ? <><span className="spin-sm" /> Submitting…</> : '📤 Submit'}
               </button>
             </>
           )}
@@ -264,46 +517,28 @@ export default function InterviewPage() {
         {!isCodingStarted ? (
           /* ---- VERBAL ROUND LAYOUT ---- */
           <div className="verbal-layout">
-
-            {/* LEFT: Interviewer panel */}
             <div className="interviewer-panel">
-              {/* Difficulty progress — hidden for realistic interview */}
-
-              {/* Avatar */}
               <div className="avatar-section">
-                <AIAvatar
-                  isSpeaking={aiSpeaking}
-                  difficulty_level={difficultyLevel as any}
-                />
+                <AIAvatar isSpeaking={aiSpeaking} difficulty_level={difficultyLevel as any} />
               </div>
-
-              {/* Status message */}
               <div className="interviewer-status">
                 {aiSpeaking
-                  ? <span style={{ color: '#a855f7' }}>Alex is speaking...</span>
+                  ? <span style={{ color: '#a855f7' }}>Alex is speaking…</span>
                   : <span style={{ color: 'rgba(255,255,255,0.35)' }}>Waiting for your response</span>}
               </div>
             </div>
 
-            {/* RIGHT: Candidate panel */}
             <div className="candidate-panel">
-              {/* Camera */}
               <div className="camera-section">
-                <CameraFeed
-                  sessionId={sessionId}
-                  onCheatEvent={handleCheatEvent}
-                />
+                <CameraFeed sessionId={sessionId} onCheatEvent={handleCheatEvent} />
               </div>
-
-              {/* Interview steps — hidden for realistic feel */}
-
-              {/* Tip hidden */}
             </div>
           </div>
         ) : (
           /* ---- CODING ROUND ---- */
           <div className="coding-layout">
-            {/* Problem panel */}
+
+            {/* ── Problem Panel ── */}
             <div className="problem-panel">
               <div className="problem-head">
                 <span className="problem-title">{question?.title || 'Problem'}</span>
@@ -313,16 +548,33 @@ export default function InterviewPage() {
                   </span>
                 )}
               </div>
+
               <p className="problem-desc">{question?.description}</p>
 
-              {question?.testCases && question.testCases.length > 0 && (
-                <div className="example-box">
-                  <div className="example-head">Example</div>
-                  {question.testCases.slice(0, 2).map((tc, i) => (
-                    <div key={i} className="example-case">
-                      <div className="case-row"><span className="case-key">Input:</span> <code>{tc.input}</code></div>
-                      <div className="case-row"><span className="case-key">Output:</span> <code>{tc.output}</code></div>
-                      {i < question.testCases!.length - 1 && <hr className="case-divider" />}
+              {question?.constraints && question.constraints.length > 0 && (
+                <div className="constraints-box">
+                  <div className="section-label">Constraints</div>
+                  {question.constraints.map((c, i) => (
+                    <div key={i} className="constraint-item">• {c}</div>
+                  ))}
+                </div>
+              )}
+
+              {/* Visible Test Cases */}
+              {visibleTestCases.length > 0 && (
+                <div className="testcases-section">
+                  <div className="section-label">Examples</div>
+                  {visibleTestCases.map((tc, i) => (
+                    <div key={i} className="example-box">
+                      <div className="example-num">Example {i + 1}</div>
+                      <div className="case-row">
+                        <span className="case-key">Input</span>
+                        <code className="case-val">{tc.input}</code>
+                      </div>
+                      <div className="case-row">
+                        <span className="case-key">Output</span>
+                        <code className="case-val">{tc.output}</code>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -332,42 +584,79 @@ export default function InterviewPage() {
                 <div className="expired-banner">⏰ Time expired — you may still submit.</div>
               )}
 
-              {/* Question dots */}
+              {/* Question progress dots */}
               <div className="q-dots">
-                {[0, 1, 2].map(i => (
+                {Array.from({ length: TOTAL_QUESTIONS }, (_, i) => (
                   <div key={i} className={`q-dot ${i < questionIndex ? 'q-done' : i === questionIndex ? 'q-cur' : ''}`} />
                 ))}
-                <span className="q-dot-label">Question {questionIndex + 1} of 3</span>
+                <span className="q-dot-label">Question {questionIndex + 1} of {TOTAL_QUESTIONS}</span>
               </div>
 
-              {/* Small camera in coding mode */}
+              {/* Small camera */}
               <div className="coding-camera">
                 <CameraFeed sessionId={sessionId} onCheatEvent={handleCheatEvent} />
               </div>
             </div>
 
-            {/* Editor */}
-            <div className="editor-panel">
-              <Editor
-                height="100%"
-                language={language}
-                theme="vs-dark"
-                value={code}
-                onChange={handleEditorChange}
-                loading={<div style={{ color: 'rgba(255,255,255,0.3)', padding: 20, fontFamily: 'monospace' }}>Loading editor...</div>}
-                options={{
-                  fontSize: 14,
-                  minimap: { enabled: false },
-                  automaticLayout: true,
-                  scrollBeyondLastLine: false,
-                  padding: { top: 20 },
-                  readOnly: timeExpired,
-                  fontFamily: "'Fira Code','Cascadia Code',monospace",
-                  fontLigatures: true,
-                  lineNumbers: 'on',
-                  renderLineHighlight: 'gutter',
-                }}
-              />
+            {/* ── Editor + Results Column ── */}
+            <div className="editor-column">
+              {/* Monaco Editor */}
+              <div className="editor-area">
+                <Editor
+                  height="100%"
+                  language={language}
+                  theme="vs-dark"
+                  value={code}
+                  onChange={handleEditorChange}
+                  loading={<div style={{ color: 'rgba(255,255,255,0.3)', padding: 20, fontFamily: 'monospace' }}>Loading editor…</div>}
+                  options={{
+                    fontSize: 13.5,
+                    minimap: { enabled: false },
+                    automaticLayout: true,
+                    scrollBeyondLastLine: false,
+                    padding: { top: 16 },
+                    readOnly: timeExpired,
+                    fontFamily: "'Fira Code','Cascadia Code',monospace",
+                    fontLigatures: true,
+                    lineNumbers: 'on',
+                    renderLineHighlight: 'gutter',
+                    tabSize: 2,
+                    wordWrap: 'on',
+                  }}
+                />
+              </div>
+
+              {/* Results Panel */}
+              <div className={`results-area ${showResults ? 'results-open' : ''}`}>
+                {!showResults ? (
+                  <button
+                    className="results-toggle"
+                    onClick={() => setShowResults(true)}
+                  >
+                    <span>▶ Test Results</span>
+                    <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.7rem' }}>Click to expand</span>
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      className="results-toggle-close"
+                      onClick={() => setShowResults(false)}
+                      title="Collapse"
+                    >▼ Hide Results</button>
+                    <div style={{ flex: 1, overflow: 'hidden' }}>
+                      <ResultsPanel
+                        runResults={runResults}
+                        submitResults={submitResults}
+                        verdict={submitVerdict}
+                        score={submitScore}
+                        feedback={submitFeedback}
+                        isRunning={running}
+                        isSubmitting={submitting}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -381,206 +670,138 @@ export default function InterviewPage() {
           overflow: hidden; position: relative;
         }
 
-        /* Header */
+        /* ─── Header ─── */
         .header {
-          height: 52px; min-height: 52px;
-          background: rgba(8,8,14,0.9);
-          backdrop-filter: blur(16px);
+          height: 48px; min-height: 48px;
+          background: rgba(8,8,14,0.95); backdrop-filter: blur(16px);
           border-bottom: 1px solid rgba(255,255,255,0.07);
-          display: flex; align-items: center;
-          justify-content: space-between;
-          padding: 0 16px; flex-shrink: 0; z-index: 10; gap: 10px;
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 0 14px; flex-shrink: 0; z-index: 10; gap: 8px;
         }
-        .header-left { display: flex; align-items: center; gap: 10px; overflow: hidden; }
-        .brand { font-weight: 700; font-size: 0.9rem; color: rgba(255,255,255,0.6); white-space: nowrap; flex-shrink: 0; }
+        .header-left { display: flex; align-items: center; gap: 8px; overflow: hidden; flex: 1; min-width: 0; }
+        .brand { font-weight: 700; font-size: 0.88rem; color: rgba(255,255,255,0.55); white-space: nowrap; flex-shrink: 0; }
         .divider { width: 1px; height: 18px; background: rgba(255,255,255,0.1); flex-shrink: 0; }
         .phase-label {
-          font-size: 0.82rem; color: #a855f7; font-weight: 600;
+          font-size: 0.8rem; color: #a855f7; font-weight: 600;
           background: rgba(168,85,247,0.1); padding: 2px 10px;
           border-radius: 6px; border: 1px solid rgba(168,85,247,0.25);
         }
         .diff-badge {
           font-size: 0.62rem; font-weight: 700; padding: 2px 8px;
-          border-radius: 999px; border: 1px solid; flex-shrink: 0;
-          letter-spacing: 0.5px;
+          border-radius: 999px; border: 1px solid; flex-shrink: 0; letter-spacing: 0.5px;
         }
         .q-title {
-          font-size: 0.88rem; color: rgba(255,255,255,0.7);
+          font-size: 0.85rem; color: rgba(255,255,255,0.65);
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
-        .header-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+        .header-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
         .q-counter {
-          font-size: 0.78rem; color: rgba(255,255,255,0.3);
-          background: rgba(255,255,255,0.04); padding: 3px 10px; border-radius: 8px;
+          font-size: 0.75rem; color: rgba(255,255,255,0.3);
+          background: rgba(255,255,255,0.04); padding: 3px 9px; border-radius: 7px;
         }
         .coding-timer {
-          font-family: 'SF Mono', monospace; font-size: 0.95rem; font-weight: 700;
-          display: flex; align-items: center; gap: 5px; white-space: nowrap;
+          font-family: 'SF Mono', monospace; font-size: 0.92rem; font-weight: 700;
+          display: flex; align-items: center; gap: 4px; white-space: nowrap;
         }
         .expired-tag {
-          font-size: 0.58rem; background: #f87171; color: #000;
+          font-size: 0.55rem; background: #f87171; color: #000;
           padding: 1px 5px; border-radius: 3px; font-weight: 800; letter-spacing: 0.5px;
         }
         .lang-sel {
           background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.8);
-          border: 1px solid rgba(255,255,255,0.1); padding: 4px 8px;
-          border-radius: 7px; font-size: 0.82rem; cursor: pointer; outline: none;
+          border: 1px solid rgba(255,255,255,0.1); padding: 4px 7px;
+          border-radius: 7px; font-size: 0.8rem; cursor: pointer; outline: none;
         }
-        .lang-sel:disabled { opacity: 0.3; cursor: not-allowed; }
+        .run-btn {
+          background: rgba(74,222,128,0.12); color: #4ade80;
+          border: 1px solid rgba(74,222,128,0.3); padding: 5px 12px;
+          border-radius: 8px; cursor: pointer; font-weight: 700;
+          font-size: 0.8rem; display: flex; align-items: center; gap: 4px;
+          white-space: nowrap; transition: all 0.18s;
+        }
+        .run-btn:hover:not(:disabled) { background: rgba(74,222,128,0.2); }
+        .run-btn:disabled { opacity: 0.35; cursor: not-allowed; }
         .submit-btn {
           background: linear-gradient(135deg,#7c3aed,#a855f7);
-          color: #fff; border: none; padding: 6px 14px;
+          color: #fff; border: none; padding: 5px 12px;
           border-radius: 8px; cursor: pointer; font-weight: 700;
-          font-size: 0.82rem; display: flex; align-items: center; gap: 5px;
+          font-size: 0.8rem; display: flex; align-items: center; gap: 4px;
           white-space: nowrap; transition: all 0.2s;
         }
         .submit-btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
-        .submit-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+        .submit-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
         .spin-sm {
-          width: 12px; height: 12px;
-          border: 2px solid rgba(255,255,255,0.2); border-top-color: #fff;
+          width: 11px; height: 11px;
+          border: 2px solid rgba(255,255,255,0.2); border-top-color: currentColor;
           border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block;
         }
 
-        /* Workspace */
+        /* ─── Workspace ─── */
         .workspace { flex: 1; overflow: hidden; min-height: 0; }
 
-        /* ====== VERBAL LAYOUT ====== */
-        .verbal-layout {
-          height: 100%;
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-        }
-
-        /* LEFT — Interviewer */
+        /* ─── Verbal Layout ─── */
+        .verbal-layout { height: 100%; display: grid; grid-template-columns: 1fr 1fr; }
         .interviewer-panel {
-          background: rgba(8,8,14,0.6);
-          border-right: 1px solid rgba(255,255,255,0.06);
-          display: flex; flex-direction: column;
-          align-items: center; justify-content: center;
-          padding: 32px 40px; gap: 24px; position: relative;
+          background: rgba(8,8,14,0.6); border-right: 1px solid rgba(255,255,255,0.06);
+          display: flex; flex-direction: column; align-items: center; justify-content: center;
+          padding: 32px 40px; gap: 24px;
         }
-
-        /* Difficulty progress */
-        .diff-progress-wrap {
-          width: 100%; max-width: 320px;
-        }
-        .diff-progress-bar {
-          width: 100%; height: 4px;
-          background: rgba(255,255,255,0.07);
-          border-radius: 2px; overflow: hidden; margin-bottom: 8px;
-        }
-        .diff-progress-fill {
-          height: 100%; border-radius: 2px;
-          transition: width 0.8s ease, background 0.5s ease;
-        }
-        .diff-progress-labels {
-          display: flex; justify-content: space-between;
-        }
-
-        /* Avatar */
         .avatar-section { display: flex; align-items: center; justify-content: center; }
-        .interviewer-status {
-          font-size: 0.82rem; min-height: 20px;
-          text-align: center;
-        }
-
-        /* RIGHT — Candidate */
+        .interviewer-status { font-size: 0.82rem; min-height: 20px; text-align: center; }
         .candidate-panel {
-          display: flex; flex-direction: column;
-          padding: 24px; gap: 16px; overflow-y: auto;
-          background: rgba(5,5,8,0.4);
+          display: flex; flex-direction: column; padding: 24px; gap: 16px;
+          overflow-y: auto; background: rgba(5,5,8,0.4);
         }
         .camera-section { flex-shrink: 0; }
-        .interview-steps { display: flex; flex-direction: column; gap: 8px; }
-        .steps-title {
-          font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;
-          color: rgba(255,255,255,0.25); margin: 0 0 8px; font-weight: 500;
-        }
-        .step-item {
-          display: flex; align-items: center; gap: 10px;
-          padding: 10px 12px; border-radius: 10px;
-          border: 1px solid rgba(255,255,255,0.05);
-          background: rgba(255,255,255,0.02);
-          transition: all 0.3s; position: relative;
-        }
-        .step-item.active {
-          border-color: rgba(168,85,247,0.35);
-          background: rgba(168,85,247,0.06);
-        }
-        .step-item.done {
-          border-color: rgba(74,222,128,0.2);
-          background: rgba(74,222,128,0.04);
-          opacity: 0.7;
-        }
-        .step-item.locked { opacity: 0.35; }
-        .step-dot {
-          width: 26px; height: 26px; border-radius: 50%;
-          background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
-          display: flex; align-items: center; justify-content: center;
-          font-size: 0.7rem; color: rgba(255,255,255,0.3);
-          flex-shrink: 0; font-weight: 700;
-        }
-        .step-item.active  .step-dot { background: rgba(168,85,247,0.2); border-color: rgba(168,85,247,0.5); color: #c084fc; }
-        .step-item.done    .step-dot { background: rgba(74,222,128,0.15); border-color: rgba(74,222,128,0.4); color: #4ade80; }
-        .step-body { flex: 1; min-width: 0; }
-        .step-label {
-          font-size: 0.85rem; color: rgba(255,255,255,0.7); font-weight: 500;
-        }
-        .step-item.active .step-label { color: rgba(255,255,255,0.9); }
-        .step-desc { font-size: 0.72rem; color: rgba(255,255,255,0.25); margin-top: 1px; }
-        .step-active-pill {
-          font-size: 0.6rem; font-weight: 800; letter-spacing: 0.5px;
-          background: rgba(168,85,247,0.25); color: #d8b4fe;
-          padding: 2px 7px; border-radius: 4px;
-          border: 1px solid rgba(168,85,247,0.3);
-          flex-shrink: 0;
-        }
-        .tip-box {
-          background: rgba(96,165,250,0.06); border: 1px solid rgba(96,165,250,0.15);
-          border-radius: 10px; padding: 10px 12px;
-          font-size: 0.78rem; color: rgba(255,255,255,0.45);
-          display: flex; gap: 8px; align-items: flex-start;
-          flex-shrink: 0;
-        }
-        .tip-icon { flex-shrink: 0; font-size: 0.85rem; }
 
-        /* ====== CODING LAYOUT ====== */
+        /* ─── Coding Layout ─── */
         .coding-layout { display: flex; height: 100%; }
+
+        /* Problem Panel */
         .problem-panel {
-          width: 38%; min-width: 260px; max-width: 420px;
+          width: 36%; min-width: 240px; max-width: 400px;
           background: rgba(255,255,255,0.02);
           border-right: 1px solid rgba(255,255,255,0.06);
-          padding: 20px; overflow-y: auto; flex-shrink: 0;
-          display: flex; flex-direction: column; gap: 14px;
+          padding: 16px; overflow-y: auto; flex-shrink: 0;
+          display: flex; flex-direction: column; gap: 12px;
         }
         .problem-head {
           display: flex; align-items: center; justify-content: space-between;
-          border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 10px;
+          border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 9px;
         }
-        .problem-title { font-size: 0.95rem; font-weight: 700; color: rgba(255,255,255,0.85); }
-        .problem-desc { font-size: 0.88rem; color: rgba(255,255,255,0.55); line-height: 1.75; margin: 0; }
+        .problem-title { font-size: 0.95rem; font-weight: 700; color: rgba(255,255,255,0.88); }
+        .problem-desc {
+          font-size: 0.84rem; color: rgba(255,255,255,0.5); line-height: 1.8; margin: 0;
+          white-space: pre-wrap;
+        }
+        .section-label {
+          font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.8px;
+          color: rgba(255,255,255,0.25); margin-bottom: 6px; font-weight: 700;
+        }
+        .constraints-box {
+          background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+          border-radius: 8px; padding: 10px 12px;
+        }
+        .constraint-item { font-size: 0.78rem; color: rgba(255,255,255,0.4); padding: 1px 0; }
+
+        /* Test Cases (examples) */
+        .testcases-section { display: flex; flex-direction: column; gap: 8px; }
         .example-box {
-          background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.07);
-          border-radius: 10px; padding: 12px 14px;
+          background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
+          border-radius: 9px; padding: 10px 12px; display: flex; flex-direction: column; gap: 5px;
         }
-        .example-head {
-          font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.8px;
-          color: rgba(255,255,255,0.25); margin-bottom: 8px; font-weight: 700;
-        }
-        .example-case { display: flex; flex-direction: column; gap: 4px; }
+        .example-num { font-size: 0.65rem; font-weight: 700; color: rgba(255,255,255,0.25); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
         .case-row { display: flex; align-items: baseline; gap: 8px; }
-        .case-key { font-size: 0.78rem; color: rgba(255,255,255,0.25); min-width: 52px; }
-        .case-row code {
-          font-family: 'Fira Code', monospace; font-size: 0.8rem;
-          color: rgba(255,255,255,0.7);
-          background: rgba(255,255,255,0.05); padding: 1px 6px; border-radius: 4px;
+        .case-key { font-size: 0.72rem; color: rgba(255,255,255,0.25); min-width: 46px; flex-shrink: 0; }
+        .case-val {
+          font-family: 'Fira Code', monospace; font-size: 0.78rem;
+          color: rgba(255,255,255,0.75); background: rgba(255,255,255,0.05);
+          padding: 1px 6px; border-radius: 4px; word-break: break-all;
         }
-        .case-divider { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 8px 0; }
+
         .expired-banner {
           background: rgba(248,113,113,0.07); border: 1px solid rgba(248,113,113,0.2);
-          color: #fca5a5; padding: 8px 12px; border-radius: 8px; font-size: 0.82rem;
+          color: #fca5a5; padding: 7px 10px; border-radius: 8px; font-size: 0.8rem;
         }
         .q-dots { display: flex; align-items: center; gap: 8px; }
         .q-dot {
@@ -592,7 +813,33 @@ export default function InterviewPage() {
         .q-cur  { background: rgba(168,85,247,0.5); border-color: #a855f7; }
         .q-dot-label { font-size: 0.72rem; color: rgba(255,255,255,0.25); margin-left: 2px; }
         .coding-camera { margin-top: auto; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.05); }
-        .editor-panel { flex: 1; overflow: hidden; min-width: 0; }
+
+        /* Editor + Results column */
+        .editor-column { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+        .editor-area { flex: 1; overflow: hidden; min-height: 0; }
+
+        /* Results area */
+        .results-area {
+          flex-shrink: 0; display: flex; flex-direction: column;
+          border-top: 1px solid rgba(255,255,255,0.07);
+          background: rgba(5,5,8,0.9);
+          height: 32px; transition: height 0.25s ease;
+        }
+        .results-area.results-open { height: 260px; }
+        .results-toggle {
+          width: 100%; background: none; border: none; cursor: pointer;
+          display: flex; align-items: center; gap: 10px; padding: 0 14px;
+          height: 32px; color: rgba(255,255,255,0.35); font-size: 0.78rem;
+          justify-content: space-between;
+        }
+        .results-toggle:hover { color: rgba(255,255,255,0.6); }
+        .results-toggle-close {
+          width: 100%; background: none; border: none; cursor: pointer;
+          display: flex; align-items: center; padding: 0 14px;
+          height: 32px; color: rgba(255,255,255,0.3); font-size: 0.72rem;
+          border-bottom: 1px solid rgba(255,255,255,0.05); flex-shrink: 0;
+        }
+        .results-toggle-close:hover { color: rgba(255,255,255,0.55); }
 
         @keyframes spin { to { transform: rotate(360deg); } }
 
