@@ -823,22 +823,42 @@ action values: "CONTINUE" | "START_CODING" | "TERMINATE"`;
     key_strengths: string[];
     areas_for_improvement: string[];
   }> {
-    const prompt = `Analyze this complete interview session and generate a detailed report card.
+    // Trim history to last 20 turns to stay within token budget
+    const trimmedHistory = chatHistory.slice(-20);
+    const historyText = trimmedHistory
+      .map(m => `${m.role === 'user' ? 'Candidate' : 'Interviewer'}: ${m.content}`)
+      .join('\n');
 
-Chat History: ${JSON.stringify(chatHistory)}
-Coding Results: ${JSON.stringify(codingResult)}
+    const codingText = codingResult
+      ? `Score: ${codingResult.score ?? 'N/A'}/100, Verdict: ${codingResult.verdict ?? 'N/A'}, Feedback: ${codingResult.feedback ?? 'N/A'}`
+      : 'Candidate did not reach the coding round or no submission was made.';
 
-Return STRICT JSON only:
+    const prompt = `You are evaluating a completed technical interview. Score the candidate honestly across three dimensions.
+
+=== VERBAL INTERVIEW TRANSCRIPT ===
+${historyText}
+
+=== CODING RESULT ===
+${codingText}
+
+=== SCORING RUBRIC ===
+communication (0-30): Clarity, structure, confidence, how well they articulate ideas
+technical (0-40): Depth of CS knowledge shown — OS, DBMS, algorithms, data structures, system design
+problem_solving (0-30): Coding score + how they approached problems logically
+
+Total score = communication + technical + problem_solving (max 100)
+
+Return STRICT JSON only — no markdown, no extra text:
 {
-  "score": <number 0-100>,
+  "score": <total 0-100>,
   "breakdown": {
-    "communication": <number 0-30>,
-    "technical": <number 0-40>,
-    "problem_solving": <number 0-30>
+    "communication": <0-30>,
+    "technical": <0-40>,
+    "problem_solving": <0-30>
   },
-  "feedback_summary": "1-2 sentence overview of performance",
-  "key_strengths": ["strength 1", "strength 2", "strength 3"],
-  "areas_for_improvement": ["area 1", "area 2"]
+  "feedback_summary": "2-3 sentence honest summary of overall performance",
+  "key_strengths": ["specific strength 1", "specific strength 2", "specific strength 3"],
+  "areas_for_improvement": ["specific area 1", "specific area 2"]
 }`;
 
     try {
@@ -846,7 +866,8 @@ Return STRICT JSON only:
         messages: [{ role: 'user', content: prompt }],
         model: MODELS.chat,
         temperature: 0.2,
-        max_tokens: 800,
+        max_tokens: 1200,
+        response_format: { type: 'json_object' },
       });
       const rawText = completion.choices[0]?.message?.content || '{}';
       const result = this.cleanAndParse(rawText);
