@@ -380,15 +380,18 @@ class AIService {
     language: string,
     stdin: string,
   ): Promise<{ stdout: string; stderr: string; exitCode: number; compileError: string }> {
-    const tmpDir  = os.tmpdir();
     const id      = randomUUID();
     const ext     = CODE_EXT[language] ?? 'js';
     const TIMEOUT = 8000; // 8 s wall time
 
-    // For Java the file name must match the class name — always "Main"
+    // Each execution gets its own temp directory — prevents Java class file conflicts
+    const jobDir = path.join(os.tmpdir(), `job_${id}`);
+    fs.mkdirSync(jobDir, { recursive: true });
+
+    // Java filename must match the public class name — always "Main"
     const fileName = language === 'java' ? 'Main.java' : `code_${id}.${ext}`;
-    const filePath = path.join(tmpDir, fileName);
-    const stdinFile = path.join(tmpDir, `stdin_${id}.txt`);
+    const filePath  = path.join(jobDir, fileName);
+    const stdinFile = path.join(jobDir, 'stdin.txt');
 
     fs.writeFileSync(filePath, code, 'utf8');
     fs.writeFileSync(stdinFile, stdin, 'utf8');
@@ -402,11 +405,11 @@ class AIService {
         runCmd = `python3 "${filePath}" < "${stdinFile}"`;
         break;
       case 'java':
-        compileCmd = `javac "${filePath}"`;
-        runCmd     = `java -cp "${tmpDir}" Main < "${stdinFile}"`;
+        compileCmd = `javac -cp "${jobDir}" "${filePath}"`;
+        runCmd     = `java -cp "${jobDir}" Main < "${stdinFile}"`;
         break;
       case 'cpp': {
-        compiledBin = path.join(tmpDir, `prog_${id}`);
+        compiledBin = path.join(jobDir, 'prog');
         compileCmd  = `g++ -o "${compiledBin}" "${filePath}"`;
         runCmd      = `"${compiledBin}" < "${stdinFile}"`;
         break;
@@ -416,9 +419,7 @@ class AIService {
     }
 
     const cleanup = () => {
-      try { fs.unlinkSync(filePath); } catch { /* ignore */ }
-      try { fs.unlinkSync(stdinFile); } catch { /* ignore */ }
-      if (compiledBin) try { fs.unlinkSync(compiledBin); } catch { /* ignore */ }
+      try { fs.rmSync(jobDir, { recursive: true, force: true }); } catch { /* ignore */ }
     };
 
     try {
@@ -518,46 +519,34 @@ class AIService {
 
     const prompt = `${problemSpec}
 
-CRITICAL REQUIREMENTS:
-1. testCases must include both human-readable AND machine-executable (stdin/expectedOutput) formats
-2. starterCode must be COMPLETE RUNNABLE PROGRAMS for each language that:
-   - Read input from stdin exactly matching the stdin format in testCases
-   - Have a clear "YOUR SOLUTION" section in the middle where user writes logic
-   - Print output to stdout exactly matching expectedOutput (trimmed, no trailing space)
-3. stdin format must be consistent with what the starterCode reads
+REQUIREMENTS:
+1. testCases: include both human-readable AND machine stdin/expectedOutput formats (3 cases, last one an edge case)
+2. starterCode: boilerplate-only template for each language — DO NOT implement the solution
+   - The I/O parsing code (reading stdin, printing stdout) must be COMPLETE and CORRECT
+   - The solution function body must contain ONLY the comment "// write your solution here" — NO algorithm, NO logic, NO hints
+   - The candidate writes the solution; you write everything else
+   - stdout output must match expectedOutput exactly (trimmed, no trailing whitespace)
+3. stdin format must be consistent across testCases and starterCode
 
-Return STRICT JSON only — no markdown, no extra text:
+⚠️ STRICT RULE: DO NOT write the solution algorithm. The function body must be empty except for one comment.
+
+Return STRICT JSON only — no markdown:
 {
-  "title": "Short descriptive title",
-  "description": "Clear problem statement including Input/Output format description and 1-2 examples",
+  "title": "Problem title",
+  "description": "Clear problem statement with Input/Output format and 1-2 worked examples",
   "difficulty": "${level}",
-  "constraints": ["Constraint 1", "Constraint 2"],
-  "functionSignature": "function name and signature for reference",
+  "constraints": ["constraint 1", "constraint 2"],
+  "functionSignature": "e.g. int[] twoSum(int[] nums, int target)",
   "testCases": [
-    {
-      "input": "human readable: e.g. nums = [2,7,11,15], target = 9",
-      "output": "human readable: e.g. [0,1]",
-      "stdin": "machine stdin — e.g. 4\\n2 7 11 15\\n9",
-      "expectedOutput": "exact stdout — e.g. 0 1"
-    },
-    {
-      "input": "human readable input 2",
-      "output": "human readable output 2",
-      "stdin": "machine stdin 2",
-      "expectedOutput": "exact stdout 2"
-    },
-    {
-      "input": "human readable input 3 (harder edge case)",
-      "output": "human readable output 3",
-      "stdin": "machine stdin 3",
-      "expectedOutput": "exact stdout 3"
-    }
+    { "input": "nums = [2,7,11,15], target = 9", "output": "[0,1]", "stdin": "4\\n2 7 11 15\\n9", "expectedOutput": "0 1" },
+    { "input": "nums = [3,2,4], target = 6", "output": "[1,2]", "stdin": "3\\n3 2 4\\n6", "expectedOutput": "1 2" },
+    { "input": "nums = [3,3], target = 6", "output": "[0,1]", "stdin": "2\\n3 3\\n6", "expectedOutput": "0 1" }
   ],
   "starterCode": {
-    "javascript": "// COMPLETE RUNNABLE JS PROGRAM\\nconst lines = require('fs').readFileSync('/dev/stdin','utf8').trim().split('\\\\n');\\n// parse input from lines...\\n\\n// ─── YOUR SOLUTION ──────────────────────────────────────────\\nfunction solve(...) {\\n  // write your solution here\\n  \\n}\\n// ────────────────────────────────────────────────────────────\\n\\n// call function and print output\\nconsole.log(solve(...));",
-    "python": "# COMPLETE RUNNABLE PYTHON PROGRAM\\nimport sys\\nlines = sys.stdin.read().strip().split('\\\\n')\\n# parse input...\\n\\n# ─── YOUR SOLUTION ──────────────────────────────────────────\\ndef solve(...):\\n    # write your solution here\\n    pass\\n# ────────────────────────────────────────────────────────────\\n\\n# call function and print output\\nprint(solve(...))",
-    "java": "// COMPLETE RUNNABLE JAVA PROGRAM\\nimport java.util.*;\\nclass Main {\\n    // ─── YOUR SOLUTION ──────────────────────────────────────────\\n    static ... solve(...) {\\n        // write your solution here\\n        return ...;\\n    }\\n    // ────────────────────────────────────────────────────────────\\n    public static void main(String[] args) {\\n        Scanner sc = new Scanner(System.in);\\n        // parse input and call solve(...)\\n        System.out.println(...);\\n    }\\n}",
-    "cpp": "// COMPLETE RUNNABLE C++ PROGRAM\\n#include<bits/stdc++.h>\\nusing namespace std;\\n// ─── YOUR SOLUTION ──────────────────────────────────────────\\n... solve(...) {\\n    // write your solution here\\n    return ...;\\n}\\n// ────────────────────────────────────────────────────────────\\nint main(){\\n    // parse input and call solve(...)\\n    cout << ... << endl;\\n    return 0;\\n}"
+    "javascript": "const lines = require('fs').readFileSync('/dev/stdin','utf8').trim().split('\\\\n');\\n// TODO: parse input from lines\\n\\nfunction solve(/* args */) {\\n  // write your solution here\\n}\\n\\n// TODO: call solve() and print the result",
+    "python": "import sys\\nlines = sys.stdin.read().strip().split('\\\\n')\\n# TODO: parse input\\n\\ndef solve(# args):\\n    # write your solution here\\n    pass\\n\\n# TODO: call solve() and print the result",
+    "java": "import java.util.*;\\nclass Main {\\n    static /* return type */ solve(/* params */) {\\n        // write your solution here\\n        return /* default */;\\n    }\\n    public static void main(String[] args) {\\n        Scanner sc = new Scanner(System.in);\\n        // TODO: parse input, call solve(), print result\\n    }\\n}",
+    "cpp": "#include<bits/stdc++.h>\\nusing namespace std;\\n/* return type */ solve(/* params */) {\\n    // write your solution here\\n    return /* default */;\\n}\\nint main(){\\n    // TODO: parse input, call solve(), print result\\n    return 0;\\n}"
   }
 }`;
 
