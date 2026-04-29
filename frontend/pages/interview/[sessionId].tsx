@@ -453,6 +453,12 @@ export default function InterviewPage() {
     if (typeof window !== 'undefined') return sessionStorage.getItem('resumeContext') || undefined;
   });
 
+  const [supportedLangs, setSupportedLangs] = useState<Record<string, boolean>>({ javascript: true, python: true, java: true, cpp: true });
+
+  useEffect(() => {
+    axios.get(`${apiUrl}/health/langs`).then(r => setSupportedLangs(r.data)).catch(() => {});
+  }, []);
+
   const [runResults,    setRunResults]    = useState<TestCaseResult[] | null>(null);
   const [submitResults, setSubmitResults] = useState<TestCaseResult[] | null>(null);
   const [submitVerdict, setSubmitVerdict] = useState<string | undefined>();
@@ -743,16 +749,29 @@ export default function InterviewPage() {
           {/* Lang selector (coding only) */}
           {isCodingStarted && (
             <div style={{ display: 'flex', gap: 1, background: '#1a1a1a', border: '1px solid #3c3c3c', borderRadius: 6, overflow: 'hidden' }}>
-              {LANGUAGES.map(l => (
-                <button key={l} onClick={() => handleLanguageChange(l)} style={{
-                  background: language === l ? '#3c3c3c' : 'transparent',
-                  border: 'none', color: language === l ? '#eff1f6' : '#5c5c5c',
-                  padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem',
-                  fontWeight: language === l ? 600 : 400, transition: 'all 0.15s',
-                }}>
-                  {LANG_LABELS[l]}
-                </button>
-              ))}
+              {LANGUAGES.map(l => {
+                const supported = supportedLangs[l] !== false;
+                return (
+                  <button
+                    key={l}
+                    onClick={() => supported && handleLanguageChange(l)}
+                    title={supported ? undefined : `${LANG_LABELS[l]} not available on this server`}
+                    style={{
+                      background: language === l ? '#3c3c3c' : 'transparent',
+                      border: 'none',
+                      color: !supported ? '#3c3c3c' : language === l ? '#eff1f6' : '#5c5c5c',
+                      padding: '4px 10px',
+                      cursor: supported ? 'pointer' : 'not-allowed',
+                      fontSize: '0.75rem',
+                      fontWeight: language === l ? 600 : 400,
+                      transition: 'all 0.15s',
+                      textDecoration: !supported ? 'line-through' : 'none',
+                    }}
+                  >
+                    {LANG_LABELS[l]}
+                  </button>
+                );
+              })}
             </div>
           )}
 

@@ -67,6 +67,19 @@ app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Probes which language runtimes are actually installed on this server.
+// Frontend calls this once on load to disable unavailable languages.
+import { execSync } from 'child_process';
+app.get('/health/langs', (req: Request, res: Response) => {
+  const probe = (cmd: string) => { try { execSync(cmd, { stdio: 'ignore', timeout: 3000 }); return true; } catch { return false; } };
+  res.json({
+    javascript: true,                         // node is always available (we're running on it)
+    python:     probe('python3 --version'),
+    java:       probe('javac -version'),
+    cpp:        probe('g++ --version'),
+  });
+});
+
 // ===============================
 // MOUNT ROUTES
 // ===============================
