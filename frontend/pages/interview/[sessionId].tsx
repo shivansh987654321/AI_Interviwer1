@@ -822,6 +822,18 @@ export default function InterviewPage() {
             <p style={{ margin: '20px 0 0', fontSize: '0.84rem', color: aiSpeaking ? '#c084fc' : '#5c5c5c' }}>
               {aiSpeaking ? 'Alex is speaking…' : 'Listening…'}
             </p>
+            <button
+              onClick={() => setIsCodingStarted(true)}
+              style={{
+                marginTop: 32, background: 'transparent', border: '1px dashed #3c3c3c',
+                color: '#5c5c5c', padding: '6px 16px', borderRadius: 6, cursor: 'pointer',
+                fontSize: '0.75rem', transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#ffa116'; (e.currentTarget as HTMLElement).style.color = '#ffa116'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#3c3c3c'; (e.currentTarget as HTMLElement).style.color = '#5c5c5c'; }}
+            >
+              Skip to Coding →
+            </button>
           </div>
           <div style={{ background: '#1a1a1a', display: 'flex', flexDirection: 'column', padding: '24px', overflow: 'auto' }}>
             <CameraFeed sessionId={sessionId} onCheatEvent={handleCheatEvent} />
