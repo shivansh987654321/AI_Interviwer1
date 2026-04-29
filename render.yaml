@@ -2,7 +2,7 @@ services:
   - type: web
     name: AI_Interviwer1
     runtime: node
-    buildCommand: apt-get install -y default-jdk 2>/dev/null || true && npm run build
+    buildCommand: apt-get update -y && apt-get install -y default-jdk g++ python3 && npm run build
     startCommand: npm start
     envVars:
       - key: NODE_ENV

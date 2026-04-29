@@ -477,8 +477,13 @@ class AIService {
           await execAsync(compileCmd, { timeout: TIMEOUT });
         } catch (e: unknown) {
           cleanup();
-          const msg = e instanceof Error ? e.message : String(e);
-          return { stdout: '', stderr: '', exitCode: 1, compileError: msg };
+          const raw = e instanceof Error ? e.message : String(e);
+          // Surface a clear message when the runtime binary isn't installed
+          const notFound = raw.includes('not found') || raw.includes('No such file') || raw.includes('ENOENT');
+          const compileError = notFound
+            ? `${language === 'java' ? 'javac' : language === 'cpp' ? 'g++' : language} is not installed on this server. Please switch to JavaScript or Python.`
+            : raw;
+          return { stdout: '', stderr: '', exitCode: 1, compileError };
         }
       }
 
