@@ -166,31 +166,79 @@ int main(){
 }`,
 };
 
-function FALLBACK_QUESTION(level: string): DSAQuestion {
-  return {
+const FALLBACK_POOL: Omit<DSAQuestion, 'difficulty'>[] = [
+  {
     title: 'Two Sum',
-    description: `Given an array of integers nums and a target integer target, return the indices of the two numbers that add up to target.
-
-Input format:
-- Line 1: n (size of array)
-- Line 2: n space-separated integers
-- Line 3: target
-
-Output: space-separated indices (0-indexed)
-
-Example:
-Input: 4 / 2 7 11 15 / 9
-Output: 0 1`,
-    difficulty: level,
-    constraints: ['2 <= nums.length <= 10^4', '-10^9 <= nums[i] <= 10^9', 'Exactly one valid answer exists'],
-    functionSignature: 'function twoSum(nums, target)',
+    description: `Given an array of integers and a target, return the indices of the two numbers that add up to target.\n\nInput:\n- Line 1: n (array size)\n- Line 2: n space-separated integers\n- Line 3: target\n\nOutput: two space-separated 0-based indices\n\nExample:\nInput: 4 / 2 7 11 15 / 9\nOutput: 0 1`,
+    constraints: ['2 <= n <= 10^4', 'Exactly one valid answer'],
+    functionSignature: 'int[] twoSum(int[] nums, int target)',
     testCases: [
-      { input: 'nums = [2,7,11,15], target = 9', output: '[0,1]', stdin: '4\n2 7 11 15\n9', expectedOutput: '0 1' },
-      { input: 'nums = [3,2,4], target = 6',     output: '[1,2]', stdin: '3\n3 2 4\n6',   expectedOutput: '1 2' },
-      { input: 'nums = [3,3], target = 6',        output: '[0,1]', stdin: '2\n3 3\n6',     expectedOutput: '0 1' },
+      { input: 'nums=[2,7,11,15], target=9', output: '[0,1]', stdin: '4\n2 7 11 15\n9', expectedOutput: '0 1' },
+      { input: 'nums=[3,2,4], target=6',     output: '[1,2]', stdin: '3\n3 2 4\n6',     expectedOutput: '1 2' },
+      { input: 'nums=[3,3], target=6',       output: '[0,1]', stdin: '2\n3 3\n6',       expectedOutput: '0 1' },
     ],
     starterCode: FALLBACK_STARTER as StarterCode,
-  };
+  },
+  {
+    title: 'Valid Parentheses',
+    description: `Given a string containing only '(', ')', '{', '}', '[', ']', determine if it is valid.\n\nA string is valid if:\n- Open brackets are closed by the same type\n- Open brackets are closed in correct order\n\nInput: one line with the string\nOutput: true or false\n\nExample:\nInput: ()[]{}\nOutput: true`,
+    constraints: ['1 <= s.length <= 10^4', "s consists of '()[]{}'"],
+    functionSignature: 'boolean isValid(String s)',
+    testCases: [
+      { input: 's="()[]{}"', output: 'true',  stdin: '()[]{}\n', expectedOutput: 'true' },
+      { input: 's="([)]"',   output: 'false', stdin: '([)]\n',   expectedOutput: 'false' },
+      { input: 's="{[]}"',   output: 'true',  stdin: '{[]}\n',   expectedOutput: 'true' },
+    ],
+    starterCode: {
+      javascript: `const line = require('fs').readFileSync('/dev/stdin','utf8').trim();\n\nfunction isValid(s) {\n  // write your solution here\n}\n\nconsole.log(isValid(line));`,
+      python:     `s = input().strip()\n\ndef is_valid(s):\n    # write your solution here\n    pass\n\nprint(str(is_valid(s)).lower())`,
+      java:       `import java.util.*;\nclass Main {\n    static boolean isValid(String s) {\n        // write your solution here\n        return false;\n    }\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        System.out.println(isValid(sc.nextLine().trim()));\n    }\n}`,
+      cpp:        `#include<bits/stdc++.h>\nusing namespace std;\nbool isValid(string s) {\n    // write your solution here\n    return false;\n}\nint main(){\n    string s; cin >> s;\n    cout << (isValid(s) ? "true" : "false") << endl;\n    return 0;\n}`,
+    },
+  },
+  {
+    title: 'Climbing Stairs',
+    description: `You are climbing a staircase with n steps. Each time you can climb 1 or 2 steps. How many distinct ways can you climb to the top?\n\nInput: one integer n\nOutput: number of distinct ways\n\nExample:\nInput: 3\nOutput: 3`,
+    constraints: ['1 <= n <= 45'],
+    functionSignature: 'int climbStairs(int n)',
+    testCases: [
+      { input: 'n=2', output: '2', stdin: '2\n', expectedOutput: '2' },
+      { input: 'n=3', output: '3', stdin: '3\n', expectedOutput: '3' },
+      { input: 'n=5', output: '8', stdin: '5\n', expectedOutput: '8' },
+    ],
+    starterCode: {
+      javascript: `const n = parseInt(require('fs').readFileSync('/dev/stdin','utf8').trim());\n\nfunction climbStairs(n) {\n  // write your solution here\n}\n\nconsole.log(climbStairs(n));`,
+      python:     `n = int(input())\n\ndef climb_stairs(n):\n    # write your solution here\n    pass\n\nprint(climb_stairs(n))`,
+      java:       `import java.util.*;\nclass Main {\n    static int climbStairs(int n) {\n        // write your solution here\n        return 0;\n    }\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        System.out.println(climbStairs(sc.nextInt()));\n    }\n}`,
+      cpp:        `#include<bits/stdc++.h>\nusing namespace std;\nint climbStairs(int n) {\n    // write your solution here\n    return 0;\n}\nint main(){\n    int n; cin >> n;\n    cout << climbStairs(n) << endl;\n    return 0;\n}`,
+    },
+  },
+  {
+    title: 'Contains Duplicate',
+    description: `Given an integer array, return true if any value appears at least twice, false if every element is distinct.\n\nInput:\n- Line 1: n (array size)\n- Line 2: n space-separated integers\n\nOutput: true or false\n\nExample:\nInput: 4 / 1 2 3 1\nOutput: true`,
+    constraints: ['1 <= n <= 10^5'],
+    functionSignature: 'boolean containsDuplicate(int[] nums)',
+    testCases: [
+      { input: 'nums=[1,2,3,1]',    output: 'true',  stdin: '4\n1 2 3 1\n',    expectedOutput: 'true' },
+      { input: 'nums=[1,2,3,4]',    output: 'false', stdin: '4\n1 2 3 4\n',    expectedOutput: 'false' },
+      { input: 'nums=[1,1,1,3,3]',  output: 'true',  stdin: '5\n1 1 1 3 3\n',  expectedOutput: 'true' },
+    ],
+    starterCode: {
+      javascript: `const lines = require('fs').readFileSync('/dev/stdin','utf8').trim().split('\\n');\nconst nums = lines[1].split(' ').map(Number);\n\nfunction containsDuplicate(nums) {\n  // write your solution here\n}\n\nconsole.log(containsDuplicate(nums));`,
+      python:     `import sys\nlines = sys.stdin.read().strip().split('\\n')\nnums = list(map(int, lines[1].split()))\n\ndef contains_duplicate(nums):\n    # write your solution here\n    pass\n\nprint(str(contains_duplicate(nums)).lower())`,
+      java:       `import java.util.*;\nclass Main {\n    static boolean containsDuplicate(int[] nums) {\n        // write your solution here\n        return false;\n    }\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        int n = sc.nextInt();\n        int[] nums = new int[n];\n        for (int i = 0; i < n; i++) nums[i] = sc.nextInt();\n        System.out.println(containsDuplicate(nums));\n    }\n}`,
+      cpp:        `#include<bits/stdc++.h>\nusing namespace std;\nbool containsDuplicate(vector<int>& nums) {\n    // write your solution here\n    return false;\n}\nint main(){\n    int n; cin >> n;\n    vector<int> nums(n);\n    for(int& x : nums) cin >> x;\n    cout << (containsDuplicate(nums) ? "true" : "false") << endl;\n    return 0;\n}`,
+    },
+  },
+];
+
+let _fallbackIndex = Math.floor(Math.random() * FALLBACK_POOL.length);
+
+function FALLBACK_QUESTION(level: string): DSAQuestion {
+  // Rotate through fallback pool so repeated failures don't always give the same problem
+  const q = FALLBACK_POOL[_fallbackIndex % FALLBACK_POOL.length];
+  _fallbackIndex++;
+  return { ...q, difficulty: level };
 }
 
 // ================================================================
@@ -554,8 +602,8 @@ Return STRICT JSON only — no markdown:
       const completion = await this.chatComplete({
         messages: [{ role: 'user', content: prompt }],
         model: MODELS.chat,
-        temperature: 0.5,
-        max_tokens: 3000,
+        temperature: 0.7,
+        max_tokens: 4500,
         response_format: { type: 'json_object' },
       });
       const rawText = completion.choices[0]?.message?.content || '{}';

@@ -14,30 +14,20 @@ export interface QuestionMeta {
 
 // ─── EASY ─────────────────────────────────────────────────────────────────────
 export const EASY_QUESTIONS: QuestionMeta[] = [
-  // Arrays & Hashing
   { title: 'Contains Duplicate', topic: 'Arrays & Hashing', url: 'https://leetcode.com/problems/contains-duplicate/' },
   { title: 'Valid Anagram', topic: 'Arrays & Hashing', url: 'https://leetcode.com/problems/valid-anagram/' },
   { title: 'Two Sum', topic: 'Arrays & Hashing', url: 'https://leetcode.com/problems/two-sum/' },
   { title: 'Majority Element', topic: 'Arrays & Hashing', url: 'https://leetcode.com/problems/majority-element/' },
-  { title: 'Missing Number', topic: 'Arrays & Hashing', url: 'https://leetcode.com/problems/missing-number/' },
-  { title: 'Find the Duplicate Number', topic: 'Arrays & Hashing', url: 'https://leetcode.com/problems/find-the-duplicate-number/' },
-  // Two Pointers
   { title: 'Valid Palindrome', topic: 'Two Pointers', url: 'https://leetcode.com/problems/valid-palindrome/' },
-  { title: 'Best Time to Buy and Sell Stock', topic: 'Two Pointers', url: 'https://leetcode.com/problems/best-time-to-buy-and-sell-stock/' },
-  { title: 'Merge Sorted Array', topic: 'Two Pointers', url: 'https://leetcode.com/problems/merge-sorted-array/' },
-  // Sliding Window
   { title: 'Best Time to Buy and Sell Stock', topic: 'Sliding Window', url: 'https://leetcode.com/problems/best-time-to-buy-and-sell-stock/' },
-  // Stack
+  { title: 'Merge Sorted Array', topic: 'Two Pointers', url: 'https://leetcode.com/problems/merge-sorted-array/' },
   { title: 'Valid Parentheses', topic: 'Stack', url: 'https://leetcode.com/problems/valid-parentheses/' },
-  // Binary Search
   { title: 'Binary Search', topic: 'Binary Search', url: 'https://leetcode.com/problems/binary-search/' },
   { title: 'Search Insert Position', topic: 'Binary Search', url: 'https://leetcode.com/problems/search-insert-position/' },
-  // Linked List
   { title: 'Reverse Linked List', topic: 'Linked List', url: 'https://leetcode.com/problems/reverse-linked-list/' },
   { title: 'Linked List Cycle', topic: 'Linked List', url: 'https://leetcode.com/problems/linked-list-cycle/' },
   { title: 'Merge Two Sorted Lists', topic: 'Linked List', url: 'https://leetcode.com/problems/merge-two-sorted-lists/' },
   { title: 'Palindrome Linked List', topic: 'Linked List', url: 'https://leetcode.com/problems/palindrome-linked-list/' },
-  // Trees
   { title: 'Invert Binary Tree', topic: 'Trees', url: 'https://leetcode.com/problems/invert-binary-tree/' },
   { title: 'Maximum Depth of Binary Tree', topic: 'Trees', url: 'https://leetcode.com/problems/maximum-depth-of-binary-tree/' },
   { title: 'Diameter of Binary Tree', topic: 'Trees', url: 'https://leetcode.com/problems/diameter-of-binary-tree/' },
@@ -45,25 +35,18 @@ export const EASY_QUESTIONS: QuestionMeta[] = [
   { title: 'Same Tree', topic: 'Trees', url: 'https://leetcode.com/problems/same-tree/' },
   { title: 'Subtree of Another Tree', topic: 'Trees', url: 'https://leetcode.com/problems/subtree-of-another-tree/' },
   { title: 'Symmetric Tree', topic: 'Trees', url: 'https://leetcode.com/problems/symmetric-tree/' },
-  // Tries
-  // Heap / Priority Queue
   { title: 'Last Stone Weight', topic: 'Heap / Priority Queue', url: 'https://leetcode.com/problems/last-stone-weight/' },
   { title: 'Kth Largest Element in a Stream', topic: 'Heap / Priority Queue', url: 'https://leetcode.com/problems/kth-largest-element-in-a-stream/' },
-  // Backtracking
-  // Graphs
   { title: 'Number of Islands', topic: 'Graphs', url: 'https://leetcode.com/problems/number-of-islands/' },
   { title: 'Flood Fill', topic: 'Graphs', url: 'https://leetcode.com/problems/flood-fill/' },
-  // Dynamic Programming
   { title: 'Climbing Stairs', topic: '1-D Dynamic Programming', url: 'https://leetcode.com/problems/climbing-stairs/' },
   { title: 'Min Cost Climbing Stairs', topic: '1-D Dynamic Programming', url: 'https://leetcode.com/problems/min-cost-climbing-stairs/' },
   { title: 'House Robber', topic: '1-D Dynamic Programming', url: 'https://leetcode.com/problems/house-robber/' },
-  // Bit Manipulation
   { title: 'Number of 1 Bits', topic: 'Bit Manipulation', url: 'https://leetcode.com/problems/number-of-1-bits/' },
   { title: 'Counting Bits', topic: 'Bit Manipulation', url: 'https://leetcode.com/problems/counting-bits/' },
   { title: 'Reverse Bits', topic: 'Bit Manipulation', url: 'https://leetcode.com/problems/reverse-bits/' },
   { title: 'Missing Number', topic: 'Bit Manipulation', url: 'https://leetcode.com/problems/missing-number/' },
   { title: 'Single Number', topic: 'Bit Manipulation', url: 'https://leetcode.com/problems/single-number/' },
-  // Math
   { title: 'Palindrome Number', topic: 'Math & Geometry', url: 'https://leetcode.com/problems/palindrome-number/' },
   { title: 'Plus One', topic: 'Math & Geometry', url: 'https://leetcode.com/problems/plus-one/' },
   { title: 'Power of Two', topic: 'Math & Geometry', url: 'https://leetcode.com/problems/power-of-two/' },
@@ -103,7 +86,7 @@ export const MEDIUM_QUESTIONS: QuestionMeta[] = [
   { title: 'Copy List with Random Pointer', topic: 'Linked List', url: 'https://leetcode.com/problems/copy-list-with-random-pointer/' },
   { title: 'LRU Cache', topic: 'Linked List', url: 'https://leetcode.com/problems/lru-cache/' },
   { title: 'Reorder List', topic: 'Linked List', url: 'https://leetcode.com/problems/reorder-list/' },
-  { title: 'Find the Duplicate Number', topic: 'Linked List', url: 'https://leetcode.com/problems/find-the-duplicate-number/' },
+  { title: 'Find the Duplicate Number', topic: 'Arrays & Hashing', url: 'https://leetcode.com/problems/find-the-duplicate-number/' },
   // Trees
   { title: 'Level Order Traversal of Binary Tree', topic: 'Trees', url: 'https://leetcode.com/problems/binary-tree-level-order-traversal/' },
   { title: 'Binary Tree Right Side View', topic: 'Trees', url: 'https://leetcode.com/problems/binary-tree-right-side-view/' },
@@ -203,7 +186,6 @@ export const HARD_QUESTIONS: QuestionMeta[] = [
   { title: 'Cheapest Flights Within K Stops', topic: 'Advanced Graphs', url: 'https://leetcode.com/problems/cheapest-flights-within-k-stops/' },
   // Dynamic Programming
   { title: 'Maximum Subarray', topic: '1-D Dynamic Programming', url: 'https://leetcode.com/problems/maximum-subarray/' },
-  { title: 'Jump Game', topic: '1-D Dynamic Programming', url: 'https://leetcode.com/problems/jump-game/' },
   // 2D DP
   { title: 'Best Time to Buy and Sell Stock with Cooldown', topic: '2-D Dynamic Programming', url: 'https://leetcode.com/problems/best-time-to-buy-and-sell-stock-with-cooldown/' },
   { title: 'Coin Change II', topic: '2-D Dynamic Programming', url: 'https://leetcode.com/problems/coin-change-ii/' },
@@ -224,8 +206,6 @@ export const HARD_QUESTIONS: QuestionMeta[] = [
   { title: 'Multiply Strings', topic: 'Math & Geometry', url: 'https://leetcode.com/problems/multiply-strings/' },
   { title: 'Largest Number', topic: 'Math & Geometry', url: 'https://leetcode.com/problems/largest-number/' },
   // Bit Manipulation
-  { title: 'Counting Bits', topic: 'Bit Manipulation', url: 'https://leetcode.com/problems/counting-bits/' },
-  { title: 'Missing Number', topic: 'Bit Manipulation', url: 'https://leetcode.com/problems/missing-number/' },
 ];
 
 // ─── LOOKUP HELPERS ───────────────────────────────────────────────────────────
@@ -235,12 +215,36 @@ const ALL_BY_DIFFICULTY: Record<string, QuestionMeta[]> = {
   hard:   HARD_QUESTIONS,
 };
 
+// Tracks recently served question titles per difficulty — avoids consecutive repeats.
+// Persists for the lifetime of the server process; resets on restart (fine for free-tier).
+const recentlyShown: Record<string, string[]> = { easy: [], medium: [], hard: [] };
+const MAX_RECENT = 15; // won't repeat the last 15 questions
+
 /**
  * Pick `count` distinct random questions for a given difficulty.
- * Falls back to medium if an unknown difficulty is given.
+ * Excludes recently shown questions so consecutive sessions always get fresh problems.
  */
 export function pickRandomQuestions(difficulty: string, count: number = 2): QuestionMeta[] {
-  const pool = ALL_BY_DIFFICULTY[difficulty.toLowerCase()] ?? MEDIUM_QUESTIONS;
-  const shuffled = [...pool].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, Math.min(count, shuffled.length));
+  const key   = difficulty.toLowerCase();
+  const pool  = ALL_BY_DIFFICULTY[key] ?? MEDIUM_QUESTIONS;
+  const recent = recentlyShown[key] ?? [];
+
+  // Prefer questions not recently shown; fall back to full pool if pool is small
+  const fresh = pool.filter(q => !recent.includes(q.title));
+  const source = fresh.length >= count ? fresh : pool;
+
+  // Fisher-Yates shuffle for uniform distribution
+  const arr = [...source];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  const picked = arr.slice(0, Math.min(count, arr.length));
+
+  // Record what we just picked so they're excluded next time
+  const rec = recentlyShown[key] ?? [];
+  for (const q of picked) rec.push(q.title);
+  recentlyShown[key] = rec.slice(-MAX_RECENT); // keep last MAX_RECENT only
+
+  return picked;
 }
