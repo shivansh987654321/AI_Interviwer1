@@ -30,11 +30,22 @@ const PORT = Number(process.env.PORT) || 5001;
 
 const server = http.createServer(app);
 
+const allowedSocketOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://127.0.0.1:3000',
+  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
+];
+
 const io = new SocketIOServer(server, {
   cors: {
-    origin: process.env.FRONTEND_URL
-      ? [process.env.FRONTEND_URL, 'http://localhost:3000', 'http://localhost:3001']
-      : ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:3001'],
+    origin: (origin, callback) => {
+      if (!origin || origin.endsWith('.vercel.app') || allowedSocketOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`Socket CORS blocked: ${origin}`));
+      }
+    },
     methods: ['GET', 'POST'],
     credentials: true,
   },
