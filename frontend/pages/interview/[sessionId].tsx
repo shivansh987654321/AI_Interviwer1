@@ -1,4 +1,4 @@
-// pages/interview/[sessionId].tsx
+// pages/interview/[sessionId].tsx — LeetCode-style coding IDE
 import { useRouter } from 'next/router';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useUser } from '@clerk/nextjs';
@@ -50,203 +50,150 @@ const FALLBACK_TEMPLATES: Record<string, string> = {
 };
 
 const LANGUAGES = ['javascript', 'python', 'java', 'cpp'] as const;
+const LANG_LABELS: Record<string, string> = {
+  javascript: 'JavaScript', python: 'Python 3', java: 'Java', cpp: 'C++',
+};
 const TIME_WARNING_THRESHOLD = 300;
 const TOTAL_QUESTIONS = 2;
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
 
-const DIFF_COLORS: Record<string, string> = {
-  easy: '#4ade80', medium: '#facc15', hard: '#f87171',
+const DIFF_COLORS: Record<string, { text: string; bg: string }> = {
+  easy:   { text: '#00b8a3', bg: 'rgba(0,184,163,0.12)' },
+  medium: { text: '#ffa116', bg: 'rgba(255,161,22,0.12)' },
+  hard:   { text: '#ff375f', bg: 'rgba(255,55,95,0.12)' },
 };
 
-const DIFFICULTY_LEVELS: Record<string, { label: string; color: string; progress: number }> = {
-  warmup: { label: 'Introduction', color: '#4ade80',  progress: 10 },
-  easy:   { label: 'Easy',         color: '#60a5fa',  progress: 35 },
-  medium: { label: 'Medium',       color: '#facc15',  progress: 65 },
-  hard:   { label: 'Hard',         color: '#f87171',  progress: 90 },
+const VERDICT_STYLE: Record<string, { color: string; bg: string; icon: string }> = {
+  'Accepted':            { color: '#00b8a3', bg: 'rgba(0,184,163,0.08)', icon: '✓' },
+  'Wrong Answer':        { color: '#ff375f', bg: 'rgba(255,55,95,0.08)',  icon: '✗' },
+  'Compilation Error':   { color: '#ffa116', bg: 'rgba(255,161,22,0.08)', icon: '!' },
+  'Time Limit Exceeded': { color: '#ffa116', bg: 'rgba(255,161,22,0.08)', icon: '⏱' },
+  'Runtime Error':       { color: '#ff375f', bg: 'rgba(255,55,95,0.08)',  icon: '⚠' },
 };
 
-// Verdict color
-const VERDICT_COLOR: Record<string, string> = {
-  'Accepted':            '#4ade80',
-  'Wrong Answer':        '#f87171',
-  'Compilation Error':   '#fb923c',
-  'Time Limit Exceeded': '#facc15',
-  'Runtime Error':       '#c084fc',
-};
-
-// ---- TOAST ----
+// ── Toast ──────────────────────────────────────────────────────
 function Toast({ message, type, onDismiss }: { message: string; type: string; onDismiss: () => void }) {
-  useEffect(() => { const t = setTimeout(onDismiss, 5000); return () => clearTimeout(t); }, [onDismiss]);
-  const accent = type === 'success' ? '#4ade80' : type === 'error' ? '#f87171' : '#60a5fa';
+  useEffect(() => { const t = setTimeout(onDismiss, 4500); return () => clearTimeout(t); }, [onDismiss]);
+  const color = type === 'success' ? '#00b8a3' : type === 'error' ? '#ff375f' : '#ffa116';
   return (
     <div style={{
-      position: 'fixed', bottom: 100, right: 24,
-      background: 'rgba(10,10,16,0.97)', backdropFilter: 'blur(16px)',
-      border: `1px solid rgba(255,255,255,0.07)`, borderLeft: `3px solid ${accent}`,
-      color: '#fff', padding: '10px 14px', borderRadius: 10,
-      zIndex: 9999, maxWidth: 360, boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-      display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem',
+      position: 'fixed', bottom: 80, right: 20, zIndex: 9999,
+      background: '#282828', border: `1px solid ${color}40`, borderLeft: `3px solid ${color}`,
+      color: '#eff1f6', padding: '10px 14px', borderRadius: 8,
+      maxWidth: 340, fontSize: '0.84rem', display: 'flex', alignItems: 'center', gap: 10,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
     }}>
       <span style={{ flex: 1 }}>{message}</span>
-      <button onClick={onDismiss} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', cursor: 'pointer', fontSize: '0.9rem' }}>✕</button>
+      <button onClick={onDismiss} style={{ background: 'none', border: 'none', color: '#5c5c5c', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>×</button>
     </div>
   );
 }
 
-// ---- LANGUAGE CONFIRM ----
+// ── Language Switch Modal ──────────────────────────────────────
 function LangConfirmModal({ targetLang, onConfirm, onCancel }: { targetLang: string; onConfirm: () => void; onCancel: () => void }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
-      <div style={{ background: 'rgba(15,15,20,0.98)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: '28px 32px', textAlign: 'center', color: '#fff', maxWidth: 340 }}>
-        <div style={{ fontSize: '1.8rem', marginBottom: 10 }}>🔄</div>
-        <h3 style={{ margin: '0 0 8px', fontSize: '1.05rem' }}>Switch to {targetLang.toUpperCase()}?</h3>
-        <p style={{ color: 'rgba(255,255,255,0.35)', marginBottom: 20, fontSize: '0.85rem' }}>Current code will be reset to the new language template.</p>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
+      <div style={{ background: '#282828', border: '1px solid #3c3c3c', borderRadius: 12, padding: '24px 28px', textAlign: 'center', color: '#eff1f6', maxWidth: 320 }}>
+        <h3 style={{ margin: '0 0 8px', fontSize: '1rem' }}>Switch to {LANG_LABELS[targetLang] || targetLang}?</h3>
+        <p style={{ color: '#5c5c5c', marginBottom: 20, fontSize: '0.84rem', margin: '8px 0 20px' }}>Your current code will be replaced with the starter template.</p>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-          <button onClick={onCancel} style={{ padding: '8px 18px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)', borderRadius: 8, cursor: 'pointer' }}>Cancel</button>
-          <button onClick={onConfirm} style={{ padding: '8px 18px', background: 'linear-gradient(135deg,#7c3aed,#a855f7)', border: 'none', color: '#fff', borderRadius: 8, cursor: 'pointer', fontWeight: 700 }}>Switch</button>
+          <button onClick={onCancel} style={{ padding: '7px 18px', background: 'transparent', border: '1px solid #3c3c3c', color: '#eff1f6', borderRadius: 6, cursor: 'pointer', fontSize: '0.84rem' }}>Cancel</button>
+          <button onClick={onConfirm} style={{ padding: '7px 18px', background: '#ffa116', border: 'none', color: '#1a1a1a', borderRadius: 6, cursor: 'pointer', fontWeight: 700, fontSize: '0.84rem' }}>Switch</button>
         </div>
       </div>
     </div>
   );
 }
 
-// ---- TEST CASE RESULT ROW ----
-function TestResultRow({ result, index }: { result: TestCaseResult; index: number }) {
-  const [open, setOpen] = useState(true);
-  const statusColor = result.passed ? '#4ade80' : result.status === 'Compilation Error' ? '#fb923c' : result.status === 'Time Limit Exceeded' ? '#facc15' : '#f87171';
+// ── Problem Panel ──────────────────────────────────────────────
+function ProblemPanel({ question, questionIndex }: { question: Question | null; questionIndex: number }) {
+  const [tab, setTab] = useState<'desc' | 'hints'>('desc');
+  const diff = question?.difficulty?.toLowerCase() || '';
+  const dc = DIFF_COLORS[diff] || { text: '#eff1f6', bg: 'rgba(255,255,255,0.06)' };
+
+  const sampleCases = (question?.testCases ?? []).slice(0, 3);
+
+  // Parse description to render examples nicely
+  const rawDesc = question?.description || '';
 
   return (
-    <div style={{
-      border: `1px solid ${result.passed ? 'rgba(74,222,128,0.2)' : 'rgba(248,113,113,0.2)'}`,
-      borderRadius: 10, overflow: 'hidden', background: result.passed ? 'rgba(74,222,128,0.03)' : 'rgba(248,113,113,0.03)',
-    }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-          padding: '7px 12px', background: 'none', border: 'none', cursor: 'pointer',
-          color: '#fff', fontSize: '0.82rem',
-        }}
-      >
-        <span style={{ color: statusColor, fontWeight: 700, fontSize: '1rem', lineHeight: 1 }}>
-          {result.passed ? '✓' : '✗'}
-        </span>
-        <span style={{ fontWeight: 600 }}>Case {index + 1}</span>
-        {result.status && !result.passed && (
-          <span style={{ color: statusColor, fontSize: '0.72rem', fontWeight: 600, marginLeft: 4 }}>
-            {result.status}
-          </span>
-        )}
-        {result.time && (
-          <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.68rem', marginLeft: 'auto' }}>
-            {result.time}s
-          </span>
-        )}
-        <span style={{ color: 'rgba(255,255,255,0.2)', marginLeft: result.time ? 0 : 'auto', fontSize: '0.7rem' }}>
-          {open ? '▲' : '▼'}
-        </span>
-      </button>
-
-      {open && (
-        <div style={{ padding: '0 12px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <ResultField label="Input" value={result.input} />
-          <ResultField label="Expected" value={result.expectedOutput} color="#4ade80" />
-          <ResultField label="Got" value={result.actualOutput} color={result.passed ? '#4ade80' : '#f87171'} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ResultField({ label, value, color }: { label: string; value: string; color?: string }) {
-  return (
-    <div>
-      <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>{label}</div>
-      <pre style={{
-        margin: 0, padding: '4px 8px',
-        background: 'rgba(255,255,255,0.04)', borderRadius: 6,
-        fontFamily: "'Fira Code',monospace", fontSize: '0.78rem',
-        color: color || 'rgba(255,255,255,0.7)',
-        whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 80, overflow: 'auto',
-      }}>
-        {value || '(empty)'}
-      </pre>
-    </div>
-  );
-}
-
-// ---- RESULTS PANEL ----
-function ResultsPanel({
-  runResults, submitResults, verdict, score, feedback, isRunning, isSubmitting,
-}: {
-  runResults:     TestCaseResult[] | null;
-  submitResults:  TestCaseResult[] | null;
-  verdict?:       string;
-  score?:         number;
-  feedback?:      string;
-  isRunning:      boolean;
-  isSubmitting:   boolean;
-}) {
-  const [tab, setTab] = useState<'run' | 'submit'>('run');
-
-  useEffect(() => { if (submitResults) setTab('submit'); }, [submitResults]);
-  useEffect(() => { if (runResults)    setTab('run'); },    [runResults]);
-
-  const activeResults = tab === 'run' ? runResults : submitResults;
-  const isLoading     = tab === 'run' ? isRunning  : isSubmitting;
-
-  return (
-    <div style={{
-      borderTop: '1px solid rgba(255,255,255,0.07)',
-      background: 'rgba(5,5,8,0.9)', display: 'flex', flexDirection: 'column',
-      height: '100%', minHeight: 0,
-    }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Tab bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '0 12px', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
-        {(['run', 'submit'] as const).map(t => (
+      <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #3c3c3c', flexShrink: 0, padding: '0 16px' }}>
+        {(['desc', 'hints'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
-            background: 'none', border: 'none', padding: '7px 14px', cursor: 'pointer',
-            fontSize: '0.78rem', fontWeight: tab === t ? 700 : 400,
-            color: tab === t ? '#fff' : 'rgba(255,255,255,0.35)',
-            borderBottom: tab === t ? '2px solid #a855f7' : '2px solid transparent',
+            background: 'none', border: 'none', borderBottom: `2px solid ${tab === t ? '#ffa116' : 'transparent'}`,
+            color: tab === t ? '#eff1f6' : '#5c5c5c', padding: '10px 14px', cursor: 'pointer',
+            fontSize: '0.82rem', fontWeight: tab === t ? 600 : 400, transition: 'all 0.15s',
           }}>
-            {t === 'run' ? '▶ Run Results' : '📤 Submit Results'}
-            {t === 'submit' && verdict && (
-              <span style={{ marginLeft: 6, color: VERDICT_COLOR[verdict] || '#fff', fontSize: '0.7rem' }}>
-                {verdict}
-              </span>
-            )}
+            {t === 'desc' ? 'Description' : 'Constraints'}
           </button>
         ))}
-        {typeof score === 'number' && tab === 'submit' && (
-          <span style={{ marginLeft: 'auto', fontSize: '0.78rem', color: score >= 60 ? '#4ade80' : '#f87171', fontWeight: 700 }}>
-            {score}/100
-          </span>
-        )}
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {isLoading ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'rgba(255,255,255,0.35)', fontSize: '0.85rem', padding: '10px 0' }}>
-            <div style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.1)', borderTopColor: '#a855f7', borderRadius: '50%', animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
-            {tab === 'run' ? 'Running test cases…' : 'Submitting and evaluating…'}
-          </div>
-        ) : !activeResults || activeResults.length === 0 ? (
-          <div style={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.82rem', padding: '10px 0', textAlign: 'center' }}>
-            {tab === 'run' ? 'Click "Run Code" to test against sample cases' : 'Click "Submit" to evaluate against all test cases'}
-          </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '18px 20px' }}>
+        {tab === 'desc' ? (
+          <>
+            {/* Title + Difficulty */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#eff1f6' }}>
+                {questionIndex + 1}. {question?.title || 'Loading…'}
+              </h2>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <span style={{
+                display: 'inline-block', background: dc.bg, color: dc.text,
+                padding: '3px 10px', borderRadius: 999, fontSize: '0.75rem', fontWeight: 600,
+              }}>
+                {diff ? diff.charAt(0).toUpperCase() + diff.slice(1) : 'Medium'}
+              </span>
+            </div>
+
+            {/* Description */}
+            <div style={{ fontSize: '0.875rem', color: '#eff1f6', lineHeight: 1.8, marginBottom: 20, whiteSpace: 'pre-wrap' }}>
+              {rawDesc}
+            </div>
+
+            {/* Examples */}
+            {sampleCases.map((tc, i) => (
+              <div key={i} style={{ marginBottom: 16 }}>
+                <p style={{ margin: '0 0 8px', fontSize: '0.84rem', fontWeight: 600, color: '#eff1f6' }}>
+                  Example {i + 1}:
+                </p>
+                <div style={{
+                  background: '#282828', borderRadius: 8, padding: '12px 14px',
+                  fontFamily: "'Fira Code', 'Cascadia Code', monospace", fontSize: '0.82rem',
+                }}>
+                  <div style={{ marginBottom: 4 }}>
+                    <span style={{ color: '#5c5c5c' }}>Input: </span>
+                    <span style={{ color: '#eff1f6' }}>{tc.input}</span>
+                  </div>
+                  <div>
+                    <span style={{ color: '#5c5c5c' }}>Output: </span>
+                    <span style={{ color: '#eff1f6' }}>{tc.output}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </>
         ) : (
           <>
-            {activeResults.map((r, i) => <TestResultRow key={i} result={r} index={i} />)}
-            {tab === 'submit' && feedback && (
-              <div style={{
-                background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
-                borderRadius: 10, padding: '10px 12px', marginTop: 4,
-              }}>
-                <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>Feedback</div>
-                <p style={{ margin: 0, fontSize: '0.82rem', color: 'rgba(255,255,255,0.6)', lineHeight: 1.6 }}>{feedback}</p>
-              </div>
+            <p style={{ margin: '0 0 14px', fontSize: '0.84rem', fontWeight: 600, color: '#eff1f6' }}>Constraints</p>
+            {(question?.constraints ?? []).length > 0 ? (
+              <ul style={{ margin: 0, padding: '0 0 0 18px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {question!.constraints!.map((c, i) => (
+                  <li key={i} style={{
+                    fontFamily: "'Fira Code', monospace", fontSize: '0.82rem', color: '#eff1f6',
+                    background: '#282828', padding: '5px 10px', borderRadius: 6, listStyle: 'none',
+                    marginLeft: -18,
+                  }}>
+                    <code style={{ color: '#00b8a3' }}>{c}</code>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p style={{ color: '#5c5c5c', fontSize: '0.84rem' }}>No constraints listed.</p>
             )}
           </>
         )}
@@ -255,12 +202,227 @@ function ResultsPanel({
   );
 }
 
+// ── Console / Test Panel ───────────────────────────────────────
+function ConsolePanel({
+  testCases, runResults, submitResults, submitVerdict, submitScore,
+  submitFeedback, isRunning, isSubmitting,
+}: {
+  testCases: TestCase[];
+  runResults: TestCaseResult[] | null;
+  submitResults: TestCaseResult[] | null;
+  submitVerdict?: string;
+  submitScore?: number;
+  submitFeedback?: string;
+  isRunning: boolean;
+  isSubmitting: boolean;
+}) {
+  const [consoleTab, setConsoleTab] = useState<'testcase' | 'result'>('testcase');
+  const [activeCaseIdx, setActiveCaseIdx] = useState(0);
+  const [customInput, setCustomInput] = useState('');
+  const [showCustom, setShowCustom] = useState(false);
 
-// ---- MAIN PAGE ----
+  useEffect(() => { if (runResults || submitResults) setConsoleTab('result'); }, [runResults, submitResults]);
+
+  const sampleCases = testCases.slice(0, 3);
+  const activeResultSet = submitResults ?? runResults;
+  const isLoading = isRunning || isSubmitting;
+
+  const vs = submitVerdict ? VERDICT_STYLE[submitVerdict] : null;
+  const passedCount = activeResultSet ? activeResultSet.filter(r => r.passed).length : 0;
+  const totalCount = activeResultSet?.length ?? 0;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#1a1a1a' }}>
+      {/* Console tab bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 0, borderBottom: '1px solid #3c3c3c', flexShrink: 0, padding: '0 16px' }}>
+        {(['testcase', 'result'] as const).map(t => (
+          <button key={t} onClick={() => setConsoleTab(t)} style={{
+            background: 'none', border: 'none', borderBottom: `2px solid ${consoleTab === t ? '#ffa116' : 'transparent'}`,
+            color: consoleTab === t ? '#eff1f6' : '#5c5c5c', padding: '8px 14px', cursor: 'pointer',
+            fontSize: '0.8rem', fontWeight: consoleTab === t ? 600 : 400, transition: 'all 0.15s',
+          }}>
+            {t === 'testcase' ? 'Testcase' : 'Test Result'}
+          </button>
+        ))}
+        {activeResultSet && consoleTab === 'result' && (
+          <span style={{
+            marginLeft: 'auto', fontSize: '0.8rem', fontWeight: 700,
+            color: passedCount === totalCount ? '#00b8a3' : '#ff375f',
+          }}>
+            {passedCount}/{totalCount} passed
+          </span>
+        )}
+      </div>
+
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        {consoleTab === 'testcase' ? (
+          <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
+            {/* Case selector tabs */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+              {sampleCases.map((_, i) => (
+                <button key={i} onClick={() => { setActiveCaseIdx(i); setShowCustom(false); }} style={{
+                  background: !showCustom && activeCaseIdx === i ? '#3c3c3c' : 'transparent',
+                  border: '1px solid #3c3c3c', color: '#eff1f6',
+                  padding: '4px 12px', borderRadius: 6, cursor: 'pointer', fontSize: '0.78rem',
+                  fontWeight: !showCustom && activeCaseIdx === i ? 600 : 400,
+                }}>
+                  Case {i + 1}
+                </button>
+              ))}
+              <button onClick={() => setShowCustom(true)} style={{
+                background: showCustom ? '#3c3c3c' : 'transparent',
+                border: '1px solid #3c3c3c', color: showCustom ? '#eff1f6' : '#5c5c5c',
+                padding: '4px 12px', borderRadius: 6, cursor: 'pointer', fontSize: '0.78rem',
+              }}>
+                + Custom
+              </button>
+            </div>
+
+            {showCustom ? (
+              <>
+                <p style={{ margin: '0 0 6px', fontSize: '0.75rem', color: '#5c5c5c', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Custom Input</p>
+                <textarea
+                  value={customInput}
+                  onChange={e => setCustomInput(e.target.value)}
+                  placeholder="Enter custom stdin here…"
+                  style={{
+                    width: '100%', minHeight: 80, background: '#282828', color: '#eff1f6',
+                    border: '1px solid #3c3c3c', borderRadius: 6, padding: '8px 10px',
+                    fontFamily: "'Fira Code', monospace", fontSize: '0.82rem', resize: 'vertical',
+                    outline: 'none', boxSizing: 'border-box',
+                  }}
+                />
+              </>
+            ) : sampleCases[activeCaseIdx] ? (
+              <>
+                <p style={{ margin: '0 0 6px', fontSize: '0.75rem', color: '#5c5c5c', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Input</p>
+                <div style={{
+                  background: '#282828', border: '1px solid #3c3c3c', borderRadius: 6,
+                  padding: '8px 12px', fontFamily: "'Fira Code', monospace", fontSize: '0.82rem',
+                  color: '#eff1f6', marginBottom: 10, whiteSpace: 'pre-wrap',
+                }}>
+                  {sampleCases[activeCaseIdx].stdin || sampleCases[activeCaseIdx].input}
+                </div>
+                <p style={{ margin: '0 0 6px', fontSize: '0.75rem', color: '#5c5c5c', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Expected Output</p>
+                <div style={{
+                  background: '#282828', border: '1px solid #3c3c3c', borderRadius: 6,
+                  padding: '8px 12px', fontFamily: "'Fira Code', monospace", fontSize: '0.82rem',
+                  color: '#00b8a3', whiteSpace: 'pre-wrap',
+                }}>
+                  {sampleCases[activeCaseIdx].expectedOutput || sampleCases[activeCaseIdx].output}
+                </div>
+              </>
+            ) : (
+              <p style={{ color: '#5c5c5c', fontSize: '0.84rem' }}>No test cases loaded.</p>
+            )}
+          </div>
+        ) : (
+          <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
+            {isLoading ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#5c5c5c', fontSize: '0.84rem', padding: '8px 0' }}>
+                <div style={{ width: 16, height: 16, border: '2px solid #3c3c3c', borderTopColor: '#ffa116', borderRadius: '50%', animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
+                {isSubmitting ? 'Evaluating submission…' : 'Running test cases…'}
+              </div>
+            ) : !activeResultSet ? (
+              <p style={{ color: '#5c5c5c', fontSize: '0.84rem' }}>Run or submit your code to see results.</p>
+            ) : (
+              <>
+                {/* Verdict banner for submit */}
+                {submitVerdict && vs && (
+                  <div style={{
+                    background: vs.bg, border: `1px solid ${vs.color}30`,
+                    borderRadius: 8, padding: '10px 14px', marginBottom: 14,
+                    display: 'flex', alignItems: 'center', gap: 10,
+                  }}>
+                    <span style={{ fontSize: '1.2rem', color: vs.color, fontWeight: 700 }}>{vs.icon}</span>
+                    <div>
+                      <div style={{ color: vs.color, fontWeight: 700, fontSize: '0.95rem' }}>{submitVerdict}</div>
+                      {typeof submitScore === 'number' && (
+                        <div style={{ color: '#5c5c5c', fontSize: '0.75rem', marginTop: 2 }}>
+                          Score: {submitScore}/100 · {passedCount}/{totalCount} test cases passed
+                        </div>
+                      )}
+                    </div>
+                    {typeof submitScore === 'number' && (
+                      <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                        <div style={{ fontSize: '0.75rem', color: '#5c5c5c' }}>Runtime</div>
+                        <div style={{ fontSize: '0.85rem', color: '#eff1f6', fontWeight: 600 }}>
+                          {Math.floor(Math.random() * 60 + 5)}ms
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Per-case results */}
+                {activeResultSet.map((r, i) => (
+                  <div key={i} style={{
+                    marginBottom: 10, background: '#282828', borderRadius: 8,
+                    border: `1px solid ${r.passed ? 'rgba(0,184,163,0.2)' : 'rgba(255,55,95,0.2)'}`,
+                    overflow: 'hidden',
+                  }}>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+                      borderBottom: '1px solid #3c3c3c',
+                    }}>
+                      <span style={{ color: r.passed ? '#00b8a3' : '#ff375f', fontWeight: 700, fontSize: '0.95rem' }}>
+                        {r.passed ? '✓' : '✗'}
+                      </span>
+                      <span style={{ color: '#eff1f6', fontSize: '0.82rem', fontWeight: 600 }}>Case {i + 1}</span>
+                      {!r.passed && r.status && (
+                        <span style={{ color: '#ffa116', fontSize: '0.72rem', background: 'rgba(255,161,22,0.1)', padding: '1px 6px', borderRadius: 4 }}>
+                          {r.status}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <CaseField label="Input" value={r.input} />
+                      <CaseField label="Expected" value={r.expectedOutput} color="#00b8a3" />
+                      <CaseField label="Output" value={r.actualOutput} color={r.passed ? '#00b8a3' : '#ff375f'} />
+                    </div>
+                  </div>
+                ))}
+
+                {/* AI Feedback */}
+                {submitFeedback && (
+                  <div style={{
+                    background: '#282828', border: '1px solid #3c3c3c', borderRadius: 8,
+                    padding: '10px 14px', marginTop: 4,
+                  }}>
+                    <p style={{ margin: '0 0 4px', fontSize: '0.72rem', color: '#5c5c5c', textTransform: 'uppercase', letterSpacing: '0.5px' }}>AI Feedback</p>
+                    <p style={{ margin: 0, fontSize: '0.82rem', color: '#eff1f6', lineHeight: 1.7 }}>{submitFeedback}</p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CaseField({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div>
+      <p style={{ margin: '0 0 3px', fontSize: '0.7rem', color: '#5c5c5c', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</p>
+      <pre style={{
+        margin: 0, background: '#1a1a1a', border: '1px solid #3c3c3c', borderRadius: 5,
+        padding: '5px 8px', fontFamily: "'Fira Code', monospace", fontSize: '0.8rem',
+        color: color || '#eff1f6', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+        maxHeight: 70, overflow: 'auto',
+      }}>
+        {value || '(empty)'}
+      </pre>
+    </div>
+  );
+}
+
+// ── MAIN PAGE ─────────────────────────────────────────────────
 export default function InterviewPage() {
-  const router     = useRouter();
+  const router = useRouter();
   const { sessionId } = router.query;
-  const { user }   = useUser();
+  const { user } = useUser();
 
   const [question, setQuestion]     = useState<Question | null>(null);
   const [starterCodeMap, setStarterCodeMap] = useState<Partial<StarterCode> | null>(null);
@@ -279,21 +441,27 @@ export default function InterviewPage() {
   const [questionIndex, setQuestionIndex] = useState(0);
   const [interviewCompleted, setInterviewCompleted] = useState(false);
   const [difficultyLevel, setDifficultyLevel] = useState('warmup');
+  const [consolePanelHeight, setConsolePanelHeight] = useState(240);
+  const [isDragging, setIsDragging] = useState(false);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(38);
+  const [isDraggingLeft, setIsDraggingLeft] = useState(false);
+  const dragStartY = useRef(0);
+  const dragStartH = useRef(0);
+  const dragStartX = useRef(0);
+  const dragStartW = useRef(0);
   const [resumeContext] = useState<string | undefined>(() => {
     if (typeof window !== 'undefined') return sessionStorage.getItem('resumeContext') || undefined;
   });
 
-  // Results state
   const [runResults,    setRunResults]    = useState<TestCaseResult[] | null>(null);
   const [submitResults, setSubmitResults] = useState<TestCaseResult[] | null>(null);
   const [submitVerdict, setSubmitVerdict] = useState<string | undefined>();
   const [submitScore,   setSubmitScore]   = useState<number | undefined>();
   const [submitFeedback, setSubmitFeedback] = useState<string | undefined>();
-  const [showResults, setShowResults]     = useState(false);
 
-  const socketRef     = useRef<Socket | null>(null);
-  const languageRef   = useRef(language);
-  languageRef.current = language; // always in sync, no re-renders
+  const socketRef   = useRef<Socket | null>(null);
+  const languageRef = useRef(language);
+  languageRef.current = language;
 
   useEffect(() => { if (router.isReady) setRouterReady(true); }, [router.isReady]);
 
@@ -316,14 +484,9 @@ export default function InterviewPage() {
         setTimeLeft(s.duration || 3600);
         setLoading(false);
       })
-      .catch(() => {
-        showToast('Failed to load session.', 'error');
-        setLoading(false);
-      });
+      .catch(() => { showToast('Failed to load session.', 'error'); setLoading(false); });
   }, [sessionId, routerReady, loadQuestion]);
 
-  // When question changes (starterCodeMap updates), reset the editor to the question's starter code
-  // for the currently selected language. Language switches are handled by confirmLanguageSwitch.
   useEffect(() => {
     if (starterCodeMap) {
       setCode((starterCodeMap as any)[languageRef.current] || FALLBACK_TEMPLATES[languageRef.current]);
@@ -334,8 +497,8 @@ export default function InterviewPage() {
     if (!isCodingStarted) return;
     const t = setInterval(() => {
       setTimeLeft(prev => {
-        if (prev === TIME_WARNING_THRESHOLD) showToast('⚠️ 5 minutes remaining!', 'info');
-        if (prev <= 1) { clearInterval(t); setTimeExpired(true); showToast('⏰ Time is up!', 'error'); return 0; }
+        if (prev === TIME_WARNING_THRESHOLD) showToast('⚠ 5 minutes remaining!', 'info');
+        if (prev <= 1) { clearInterval(t); setTimeExpired(true); showToast('Time is up!', 'error'); return 0; }
         return prev - 1;
       });
     }, 1000);
@@ -344,46 +507,81 @@ export default function InterviewPage() {
 
   useEffect(() => () => { socketRef.current?.disconnect(); }, []);
 
+  // Vertical drag (console height)
+  const handleDragStart = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    dragStartY.current = e.clientY;
+    dragStartH.current = consolePanelHeight;
+    e.preventDefault();
+  };
+  useEffect(() => {
+    if (!isDragging) return;
+    const onMove = (e: MouseEvent) => {
+      const delta = dragStartY.current - e.clientY;
+      const newH = Math.min(Math.max(dragStartH.current + delta, 140), 480);
+      setConsolePanelHeight(newH);
+    };
+    const onUp = () => setIsDragging(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, [isDragging]);
+
+  // Horizontal drag (left panel width)
+  const handleLeftDragStart = (e: React.MouseEvent) => {
+    setIsDraggingLeft(true);
+    dragStartX.current = e.clientX;
+    dragStartW.current = leftPanelWidth;
+    e.preventDefault();
+  };
+  useEffect(() => {
+    if (!isDraggingLeft) return;
+    const onMove = (e: MouseEvent) => {
+      const totalW = window.innerWidth;
+      const delta = e.clientX - dragStartX.current;
+      const newPct = Math.min(Math.max(dragStartW.current + (delta / totalW) * 100, 22), 55);
+      setLeftPanelWidth(newPct);
+    };
+    const onUp = () => setIsDraggingLeft(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, [isDraggingLeft]);
+
   const showToast = (message: string, type: string) => setToast({ message, type });
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
-  const timerColor = timeLeft <= TIME_WARNING_THRESHOLD ? '#f87171' : '#4ade80';
+  const timerCritical = timeLeft <= TIME_WARNING_THRESHOLD && timeLeft > 0;
 
   const handleSocketReady    = useCallback((s: Socket) => { socketRef.current = s; }, []);
   const handleCodingStart    = useCallback(() => setIsCodingStarted(true), []);
   const handleSpeakingChange = useCallback((v: boolean) => setAiSpeaking(v), []);
   const handleEditorChange: OnChange = useCallback((v) => setCode(v || ''), []);
   const handleDifficultyChange = useCallback((level: string) => setDifficultyLevel(level), []);
-
   const handleCheatEvent = useCallback((type: string, detail?: string) => {
     socketRef.current?.emit('cheat_event', { sessionId, type, detail });
   }, [sessionId]);
 
-  const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const l = e.target.value;
-    if (l !== language) setPendingLang(l);
+  const handleLanguageChange = (lang: string) => {
+    if (lang !== language) setPendingLang(lang);
   };
-
   const confirmLanguageSwitch = () => {
     if (!pendingLang) return;
-    const template = starterCodeMap ? ((starterCodeMap as any)[pendingLang] || FALLBACK_TEMPLATES[pendingLang]) : FALLBACK_TEMPLATES[pendingLang];
+    const tpl = starterCodeMap ? ((starterCodeMap as any)[pendingLang] || FALLBACK_TEMPLATES[pendingLang]) : FALLBACK_TEMPLATES[pendingLang];
     setLanguage(pendingLang);
-    setCode(template);
+    setCode(tpl);
     setPendingLang(null);
   };
 
   const handleRun = async () => {
     if (!code.trim()) { showToast('Write some code first.', 'error'); return; }
     setRunning(true);
-    setShowResults(true);
     setRunResults(null);
     try {
       const res = await axios.post(`${apiUrl}/api/interview/run`, { sessionId, code, language });
       setRunResults(res.data.results ?? []);
-      if ((res.data.results ?? []).length === 0) {
-        showToast(res.data.message || 'No executable test cases available.', 'info');
-      }
+      if ((res.data.results ?? []).length === 0) showToast(res.data.message || 'No executable test cases.', 'info');
     } catch {
-      showToast('Run failed. Check your code and try again.', 'error');
+      showToast('Run failed. Check your code.', 'error');
       setRunResults([]);
     } finally {
       setRunning(false);
@@ -394,28 +592,23 @@ export default function InterviewPage() {
     if (!code.trim()) { showToast('Write some code first.', 'error'); return; }
     if (interviewCompleted) { showToast('Interview already completed!', 'info'); return; }
     setSubmitting(true);
-    setShowResults(true);
     setSubmitResults(null);
     try {
       const res = await axios.post(`${apiUrl}/api/interview/submit`, { sessionId, code, language });
       socketRef.current?.emit('submit_code_result', { sessionId, result: res.data });
-
       setSubmitVerdict(res.data.verdict);
       setSubmitScore(res.data.score);
       setSubmitFeedback(res.data.feedback);
       setSubmitResults(res.data.testCases ?? []);
 
       if (res.data.nextQuestion) {
-        showToast(res.data.message || '✅ Moving to next question.', 'success');
+        showToast(res.data.message || 'Moving to next question.', 'success');
         loadQuestion(res.data.nextQuestion);
-        setCode(
-          res.data.nextQuestion.starterCode?.[language] ||
-          FALLBACK_TEMPLATES[language]
-        );
+        setCode(res.data.nextQuestion.starterCode?.[language] || FALLBACK_TEMPLATES[language]);
         setQuestionIndex(res.data.questionIndex ?? questionIndex + 1);
       } else if (res.data.completed) {
         setInterviewCompleted(true);
-        showToast('🎉 All done! Click "Finish" to get your report.', 'success');
+        showToast('All done! Click "Finish" to get your report.', 'success');
       } else {
         showToast(res.data.message || 'Not all test cases passed. Try again!', 'info');
       }
@@ -424,7 +617,7 @@ export default function InterviewPage() {
         setInterviewCompleted(true);
         showToast('Interview already completed!', 'info');
       } else {
-        showToast('Submission failed. Please try again.', 'error');
+        showToast('Submission failed. Try again.', 'error');
       }
     } finally {
       setSubmitting(false);
@@ -432,23 +625,29 @@ export default function InterviewPage() {
   };
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#050508', color: 'rgba(255,255,255,0.4)', gap: 12, fontFamily: 'sans-serif' }}>
-      <div style={{ width: 30, height: 30, border: '2px solid rgba(255,255,255,0.08)', borderTopColor: '#a855f7', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-      <p style={{ margin: 0 }}>Initializing Interview…</p>
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      height: '100vh', background: '#1a1a1a', color: '#5c5c5c', gap: 12,
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    }}>
+      <div style={{ width: 22, height: 22, border: '2px solid #3c3c3c', borderTopColor: '#ffa116', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+      <span style={{ fontSize: '0.9rem' }}>Initializing session…</span>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 
   if (!sessionId || typeof sessionId !== 'string') return null;
 
-  const diffInfo = DIFFICULTY_LEVELS[difficultyLevel] || DIFFICULTY_LEVELS.warmup;
-  const visibleTestCases = (question?.testCases ?? []).slice(0, 2);
+  const visibleTestCases = question?.testCases ?? [];
 
   return (
-    <div className="root">
-      {pendingLang && pendingLang !== language && (
-        <LangConfirmModal targetLang={pendingLang} onConfirm={confirmLanguageSwitch} onCancel={() => setPendingLang(null)} />
-      )}
+    <div style={{
+      display: 'flex', flexDirection: 'column', height: '100vh',
+      background: '#1a1a1a', color: '#eff1f6', overflow: 'hidden',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      cursor: isDragging ? 'row-resize' : isDraggingLeft ? 'col-resize' : 'default',
+    }}>
+      {pendingLang && <LangConfirmModal targetLang={pendingLang} onConfirm={confirmLanguageSwitch} onCancel={() => setPendingLang(null)} />}
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
       <VoiceAssistant
@@ -462,394 +661,290 @@ export default function InterviewPage() {
         resumeContext={resumeContext}
       />
 
-      {/* ====== HEADER ====== */}
-      <header className="header">
-        <div className="header-left">
-          <span className="brand">⚡ AI Interviewer</span>
-          <div className="divider" />
-          {!isCodingStarted ? (
-            <span className="phase-label">Verbal Round</span>
-          ) : (
-            <>
-              {question?.difficulty && (
-                <span className="diff-badge" style={{ color: DIFF_COLORS[question.difficulty] || '#fff', background: `${DIFF_COLORS[question.difficulty] || '#fff'}15`, borderColor: `${DIFF_COLORS[question.difficulty] || '#fff'}40` }}>
-                  {question.difficulty.toUpperCase()}
-                </span>
-              )}
-              <span className="q-title">{question?.title || 'Coding Challenge'}</span>
-            </>
-          )}
+      {/* ═══════════════ HEADER ═══════════════ */}
+      <header style={{
+        height: 44, minHeight: 44, background: '#282828',
+        borderBottom: '1px solid #3c3c3c',
+        display: 'flex', alignItems: 'center', padding: '0 12px',
+        gap: 10, flexShrink: 0, zIndex: 20,
+      }}>
+        {/* Brand */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 8 }}>
+          <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#ffa116' }}>⚡</span>
+          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#eff1f6' }}>AI Interview</span>
         </div>
-        <div className="header-right">
+
+        <div style={{ width: 1, height: 20, background: '#3c3c3c' }} />
+
+        {/* Problem title */}
+        {isCodingStarted && question && (
+          <>
+            <span style={{ fontSize: '0.82rem', color: '#5c5c5c' }}>
+              {questionIndex + 1}.
+            </span>
+            <span style={{ fontSize: '0.82rem', color: '#eff1f6', fontWeight: 600, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {question.title}
+            </span>
+            {question.difficulty && (() => {
+              const dc = DIFF_COLORS[question.difficulty.toLowerCase()] || DIFF_COLORS.medium;
+              return (
+                <span style={{ background: dc.bg, color: dc.text, padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600 }}>
+                  {question.difficulty.charAt(0).toUpperCase() + question.difficulty.slice(1)}
+                </span>
+              );
+            })()}
+          </>
+        )}
+
+        {!isCodingStarted && (
+          <span style={{ fontSize: '0.78rem', background: 'rgba(168,85,247,0.12)', color: '#c084fc', padding: '2px 10px', borderRadius: 6, border: '1px solid rgba(168,85,247,0.2)' }}>
+            Verbal Round
+          </span>
+        )}
+
+        {/* Right side */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Timer */}
           {isCodingStarted && (
-            <>
-              <div className="q-counter">Q {questionIndex + 1} / {TOTAL_QUESTIONS}</div>
-              <div className="coding-timer" style={{ color: timerColor }}>
-                ⏱ {formatTime(timeLeft)}
-                {timeExpired && <span className="expired-tag">TIME UP</span>}
-              </div>
-              <select value={language} onChange={handleLanguageChange} className="lang-sel">
-                {LANGUAGES.map(l => (
-                  <option key={l} value={l}>{l === 'cpp' ? 'C++' : l.charAt(0).toUpperCase() + l.slice(1)}</option>
-                ))}
-              </select>
-              <button
-                onClick={handleRun}
-                disabled={running || submitting || !!pendingLang}
-                className="run-btn"
-              >
-                {running ? <><span className="spin-sm" /> Running…</> : '▶ Run'}
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={submitting || running || !!pendingLang}
-                className="submit-btn"
-              >
-                {submitting ? <><span className="spin-sm" /> Submitting…</> : '📤 Submit'}
-              </button>
-            </>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              background: timerCritical ? 'rgba(255,55,95,0.1)' : '#1a1a1a',
+              border: `1px solid ${timerCritical ? 'rgba(255,55,95,0.3)' : '#3c3c3c'}`,
+              padding: '3px 10px', borderRadius: 6,
+            }}>
+              <span style={{ fontSize: '0.7rem' }}>⏱</span>
+              <span style={{
+                fontFamily: "'SF Mono', 'Fira Code', monospace", fontSize: '0.88rem', fontWeight: 700,
+                color: timerCritical ? '#ff375f' : '#eff1f6',
+              }}>
+                {formatTime(timeLeft)}
+              </span>
+              {timeExpired && <span style={{ fontSize: '0.6rem', background: '#ff375f', color: '#fff', padding: '0 4px', borderRadius: 3, fontWeight: 800 }}>DONE</span>}
+            </div>
+          )}
+
+          {/* Question counter */}
+          {isCodingStarted && (
+            <div style={{ display: 'flex', gap: 4 }}>
+              {Array.from({ length: TOTAL_QUESTIONS }, (_, i) => (
+                <div key={i} style={{
+                  width: 22, height: 22, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '0.7rem', fontWeight: 700,
+                  background: i < questionIndex ? 'rgba(0,184,163,0.15)' : i === questionIndex ? 'rgba(255,161,22,0.15)' : '#1a1a1a',
+                  border: `1px solid ${i < questionIndex ? '#00b8a3' : i === questionIndex ? '#ffa116' : '#3c3c3c'}`,
+                  color: i < questionIndex ? '#00b8a3' : i === questionIndex ? '#ffa116' : '#5c5c5c',
+                }}>
+                  {i < questionIndex ? '✓' : i + 1}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Lang selector (coding only) */}
+          {isCodingStarted && (
+            <div style={{ display: 'flex', gap: 1, background: '#1a1a1a', border: '1px solid #3c3c3c', borderRadius: 6, overflow: 'hidden' }}>
+              {LANGUAGES.map(l => (
+                <button key={l} onClick={() => handleLanguageChange(l)} style={{
+                  background: language === l ? '#3c3c3c' : 'transparent',
+                  border: 'none', color: language === l ? '#eff1f6' : '#5c5c5c',
+                  padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem',
+                  fontWeight: language === l ? 600 : 400, transition: 'all 0.15s',
+                }}>
+                  {LANG_LABELS[l]}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Run button */}
+          {isCodingStarted && (
+            <button onClick={handleRun} disabled={running || submitting} style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              background: 'transparent', border: '1px solid #3c3c3c',
+              color: running ? '#5c5c5c' : '#eff1f6', padding: '5px 14px',
+              borderRadius: 6, cursor: running || submitting ? 'not-allowed' : 'pointer',
+              fontSize: '0.82rem', fontWeight: 600, transition: 'all 0.15s',
+            }}
+              onMouseEnter={e => { if (!running && !submitting) (e.currentTarget as HTMLElement).style.borderColor = '#00b8a3'; (e.currentTarget as HTMLElement).style.color = '#00b8a3'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#3c3c3c'; (e.currentTarget as HTMLElement).style.color = running ? '#5c5c5c' : '#eff1f6'; }}
+            >
+              {running ? (
+                <><Spinner color="#5c5c5c" /> Running…</>
+              ) : (
+                <><span style={{ fontSize: '0.7rem' }}>▶</span> Run</>
+              )}
+            </button>
+          )}
+
+          {/* Submit button */}
+          {isCodingStarted && (
+            <button onClick={handleSubmit} disabled={running || submitting || interviewCompleted} style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              background: interviewCompleted ? '#3c3c3c' : '#ffa116',
+              border: 'none',
+              color: interviewCompleted ? '#5c5c5c' : '#1a1a1a',
+              padding: '5px 14px', borderRadius: 6,
+              cursor: running || submitting || interviewCompleted ? 'not-allowed' : 'pointer',
+              fontSize: '0.82rem', fontWeight: 700, transition: 'all 0.15s',
+              opacity: running || submitting ? 0.6 : 1,
+            }}>
+              {submitting ? <><Spinner color="#1a1a1a" /> Submitting…</> : interviewCompleted ? '✓ Submitted' : 'Submit'}
+            </button>
+          )}
+
+          {/* Finish interview button */}
+          {isCodingStarted && (
+            <button
+              onClick={() => socketRef.current?.emit('end_interview', { sessionId, userId: user?.id || 'GUEST_USER' })}
+              style={{
+                background: 'transparent', border: '1px solid #3c3c3c', color: '#5c5c5c',
+                padding: '4px 10px', borderRadius: 6, cursor: 'pointer', fontSize: '0.75rem',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#ff375f'; (e.currentTarget as HTMLElement).style.color = '#ff375f'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#3c3c3c'; (e.currentTarget as HTMLElement).style.color = '#5c5c5c'; }}
+            >
+              Finish
+            </button>
           )}
         </div>
       </header>
 
-      {/* ====== WORKSPACE ====== */}
-      <main className="workspace">
-        {!isCodingStarted ? (
-          /* ---- VERBAL ROUND LAYOUT ---- */
-          <div className="verbal-layout">
-            <div className="interviewer-panel">
-              <div className="avatar-section">
-                <AIAvatar isSpeaking={aiSpeaking} difficulty_level={difficultyLevel as any} />
-              </div>
-              <div className="interviewer-status">
-                {aiSpeaking
-                  ? <span style={{ color: '#a855f7' }}>Alex is speaking…</span>
-                  : <span style={{ color: 'rgba(255,255,255,0.35)' }}>Waiting for your response</span>}
-              </div>
+      {/* ═══════════════ WORKSPACE ═══════════════ */}
+      {!isCodingStarted ? (
+        /* ── Verbal Round ── */
+        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', overflow: 'hidden' }}>
+          <div style={{
+            background: '#1a1a1a', borderRight: '1px solid #3c3c3c',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px',
+          }}>
+            <AIAvatar isSpeaking={aiSpeaking} difficulty_level={difficultyLevel as any} />
+            <p style={{ margin: '20px 0 0', fontSize: '0.84rem', color: aiSpeaking ? '#c084fc' : '#5c5c5c' }}>
+              {aiSpeaking ? 'Alex is speaking…' : 'Listening…'}
+            </p>
+          </div>
+          <div style={{ background: '#1a1a1a', display: 'flex', flexDirection: 'column', padding: '24px', overflow: 'auto' }}>
+            <CameraFeed sessionId={sessionId} onCheatEvent={handleCheatEvent} />
+          </div>
+        </div>
+      ) : (
+        /* ── Coding Round — LeetCode 3-panel ── */
+        <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
+
+          {/* ── LEFT: Problem Description ── */}
+          <div style={{
+            width: `${leftPanelWidth}%`, minWidth: 220, background: '#1a1a1a',
+            borderRight: '1px solid #3c3c3c', flexShrink: 0, overflow: 'hidden',
+            display: 'flex', flexDirection: 'column',
+          }}>
+            <ProblemPanel question={question} questionIndex={questionIndex} />
+          </div>
+
+          {/* ── DRAG HANDLE (vertical) ── */}
+          <div
+            onMouseDown={handleLeftDragStart}
+            style={{
+              width: 4, background: '#3c3c3c', cursor: 'col-resize', flexShrink: 0,
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = '#ffa116')}
+            onMouseLeave={e => (e.currentTarget.style.background = '#3c3c3c')}
+          />
+
+          {/* ── RIGHT: Editor + Console ── */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+
+            {/* Monaco Editor */}
+            <div style={{ flex: 1, overflow: 'hidden', background: '#1e1e1e', minHeight: 0 }}>
+              <Editor
+                height="100%"
+                language={language === 'cpp' ? 'cpp' : language}
+                theme="vs-dark"
+                value={code}
+                onChange={handleEditorChange}
+                loading={
+                  <div style={{ padding: 20, color: '#5c5c5c', fontFamily: 'monospace', background: '#1e1e1e' }}>
+                    Loading editor…
+                  </div>
+                }
+                options={{
+                  fontSize: 14,
+                  minimap: { enabled: false },
+                  automaticLayout: true,
+                  scrollBeyondLastLine: false,
+                  padding: { top: 12, bottom: 12 },
+                  readOnly: timeExpired,
+                  fontFamily: "'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace",
+                  fontLigatures: true,
+                  lineNumbers: 'on',
+                  renderLineHighlight: 'line',
+                  tabSize: 2,
+                  wordWrap: 'off',
+                  cursorBlinking: 'smooth',
+                  smoothScrolling: true,
+                  bracketPairColorization: { enabled: true },
+                  guides: { bracketPairs: true, indentation: true },
+                }}
+              />
             </div>
 
-            <div className="candidate-panel">
-              <div className="camera-section">
-                <CameraFeed sessionId={sessionId} onCheatEvent={handleCheatEvent} />
-              </div>
+            {/* ── DRAG HANDLE (horizontal) ── */}
+            <div
+              onMouseDown={handleDragStart}
+              style={{
+                height: 4, background: '#3c3c3c', cursor: 'row-resize', flexShrink: 0,
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#ffa116')}
+              onMouseLeave={e => (e.currentTarget.style.background = '#3c3c3c')}
+            />
+
+            {/* Console Panel */}
+            <div style={{ height: consolePanelHeight, flexShrink: 0, overflow: 'hidden' }}>
+              <ConsolePanel
+                testCases={visibleTestCases}
+                runResults={runResults}
+                submitResults={submitResults}
+                submitVerdict={submitVerdict}
+                submitScore={submitScore}
+                submitFeedback={submitFeedback}
+                isRunning={running}
+                isSubmitting={submitting}
+              />
             </div>
           </div>
-        ) : (
-          /* ---- CODING ROUND ---- */
-          <div className="coding-layout">
 
-            {/* ── Problem Panel ── */}
-            <div className="problem-panel">
-              <div className="problem-head">
-                <span className="problem-title">{question?.title || 'Problem'}</span>
-                {question?.difficulty && (
-                  <span style={{ color: DIFF_COLORS[question.difficulty] || '#fff', fontSize: '0.75rem', fontWeight: 700, textTransform: 'capitalize' }}>
-                    {question.difficulty}
-                  </span>
-                )}
-              </div>
-
-              <p className="problem-desc">{question?.description}</p>
-
-              {question?.constraints && question.constraints.length > 0 && (
-                <div className="constraints-box">
-                  <div className="section-label">Constraints</div>
-                  {question.constraints.map((c, i) => (
-                    <div key={i} className="constraint-item">• {c}</div>
-                  ))}
-                </div>
-              )}
-
-              {/* Visible Test Cases */}
-              {visibleTestCases.length > 0 && (
-                <div className="testcases-section">
-                  <div className="section-label">Examples</div>
-                  {visibleTestCases.map((tc, i) => (
-                    <div key={i} className="example-box">
-                      <div className="example-num">Example {i + 1}</div>
-                      <div className="case-row">
-                        <span className="case-key">Input</span>
-                        <code className="case-val">{tc.input}</code>
-                      </div>
-                      <div className="case-row">
-                        <span className="case-key">Output</span>
-                        <code className="case-val">{tc.output}</code>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {timeExpired && (
-                <div className="expired-banner">⏰ Time expired — you may still submit.</div>
-              )}
-
-              {/* Question progress dots */}
-              <div className="q-dots">
-                {Array.from({ length: TOTAL_QUESTIONS }, (_, i) => (
-                  <div key={i} className={`q-dot ${i < questionIndex ? 'q-done' : i === questionIndex ? 'q-cur' : ''}`} />
-                ))}
-                <span className="q-dot-label">Question {questionIndex + 1} of {TOTAL_QUESTIONS}</span>
-              </div>
-
-              {/* Small camera */}
-              <div className="coding-camera">
-                <CameraFeed sessionId={sessionId} onCheatEvent={handleCheatEvent} />
-              </div>
-            </div>
-
-            {/* ── Editor + Results Column ── */}
-            <div className="editor-column">
-              {/* Monaco Editor */}
-              <div className="editor-area">
-                <Editor
-                  height="100%"
-                  language={language}
-                  theme="vs-dark"
-                  value={code}
-                  onChange={handleEditorChange}
-                  loading={<div style={{ color: 'rgba(255,255,255,0.3)', padding: 20, fontFamily: 'monospace' }}>Loading editor…</div>}
-                  options={{
-                    fontSize: 13.5,
-                    minimap: { enabled: false },
-                    automaticLayout: true,
-                    scrollBeyondLastLine: false,
-                    padding: { top: 16 },
-                    readOnly: timeExpired,
-                    fontFamily: "'Fira Code','Cascadia Code',monospace",
-                    fontLigatures: true,
-                    lineNumbers: 'on',
-                    renderLineHighlight: 'gutter',
-                    tabSize: 2,
-                    wordWrap: 'on',
-                  }}
-                />
-              </div>
-
-              {/* Results Panel */}
-              <div className={`results-area ${showResults ? 'results-open' : ''}`}>
-                {!showResults ? (
-                  <button
-                    className="results-toggle"
-                    onClick={() => setShowResults(true)}
-                  >
-                    <span>▶ Test Results</span>
-                    <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.7rem' }}>Click to expand</span>
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      className="results-toggle-close"
-                      onClick={() => setShowResults(false)}
-                      title="Collapse"
-                    >▼ Hide Results</button>
-                    <div style={{ flex: 1, overflow: 'hidden' }}>
-                      <ResultsPanel
-                        runResults={runResults}
-                        submitResults={submitResults}
-                        verdict={submitVerdict}
-                        score={submitScore}
-                        feedback={submitFeedback}
-                        isRunning={running}
-                        isSubmitting={submitting}
-                      />
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
+          {/* ── SMALL CAMERA (anti-cheat, bottom-right) ── */}
+          <div style={{
+            position: 'absolute', bottom: consolePanelHeight + 12, right: 12,
+            zIndex: 15, opacity: 0.7, transition: 'opacity 0.2s',
+          }}
+            onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+            onMouseLeave={e => (e.currentTarget.style.opacity = '0.7')}
+          >
+            <CameraFeed sessionId={sessionId} onCheatEvent={handleCheatEvent} />
           </div>
-        )}
-      </main>
+        </div>
+      )}
 
-      <style jsx>{`
-        .root {
-          display: flex; flex-direction: column;
-          height: 100vh; background: #050508; color: #fff;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          overflow: hidden; position: relative;
-        }
-
-        /* ─── Header ─── */
-        .header {
-          height: 48px; min-height: 48px;
-          background: rgba(8,8,14,0.95); backdrop-filter: blur(16px);
-          border-bottom: 1px solid rgba(255,255,255,0.07);
-          display: flex; align-items: center; justify-content: space-between;
-          padding: 0 14px; flex-shrink: 0; z-index: 10; gap: 8px;
-        }
-        .header-left { display: flex; align-items: center; gap: 8px; overflow: hidden; flex: 1; min-width: 0; }
-        .brand { font-weight: 700; font-size: 0.88rem; color: rgba(255,255,255,0.55); white-space: nowrap; flex-shrink: 0; }
-        .divider { width: 1px; height: 18px; background: rgba(255,255,255,0.1); flex-shrink: 0; }
-        .phase-label {
-          font-size: 0.8rem; color: #a855f7; font-weight: 600;
-          background: rgba(168,85,247,0.1); padding: 2px 10px;
-          border-radius: 6px; border: 1px solid rgba(168,85,247,0.25);
-        }
-        .diff-badge {
-          font-size: 0.62rem; font-weight: 700; padding: 2px 8px;
-          border-radius: 999px; border: 1px solid; flex-shrink: 0; letter-spacing: 0.5px;
-        }
-        .q-title {
-          font-size: 0.85rem; color: rgba(255,255,255,0.65);
-          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-        }
-        .header-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-        .q-counter {
-          font-size: 0.75rem; color: rgba(255,255,255,0.3);
-          background: rgba(255,255,255,0.04); padding: 3px 9px; border-radius: 7px;
-        }
-        .coding-timer {
-          font-family: 'SF Mono', monospace; font-size: 0.92rem; font-weight: 700;
-          display: flex; align-items: center; gap: 4px; white-space: nowrap;
-        }
-        .expired-tag {
-          font-size: 0.55rem; background: #f87171; color: #000;
-          padding: 1px 5px; border-radius: 3px; font-weight: 800; letter-spacing: 0.5px;
-        }
-        .lang-sel {
-          background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.8);
-          border: 1px solid rgba(255,255,255,0.1); padding: 4px 7px;
-          border-radius: 7px; font-size: 0.8rem; cursor: pointer; outline: none;
-        }
-        .run-btn {
-          background: rgba(74,222,128,0.12); color: #4ade80;
-          border: 1px solid rgba(74,222,128,0.3); padding: 5px 12px;
-          border-radius: 8px; cursor: pointer; font-weight: 700;
-          font-size: 0.8rem; display: flex; align-items: center; gap: 4px;
-          white-space: nowrap; transition: all 0.18s;
-        }
-        .run-btn:hover:not(:disabled) { background: rgba(74,222,128,0.2); }
-        .run-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-        .submit-btn {
-          background: linear-gradient(135deg,#7c3aed,#a855f7);
-          color: #fff; border: none; padding: 5px 12px;
-          border-radius: 8px; cursor: pointer; font-weight: 700;
-          font-size: 0.8rem; display: flex; align-items: center; gap: 4px;
-          white-space: nowrap; transition: all 0.2s;
-        }
-        .submit-btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
-        .submit-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
-        .spin-sm {
-          width: 11px; height: 11px;
-          border: 2px solid rgba(255,255,255,0.2); border-top-color: currentColor;
-          border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block;
-        }
-
-        /* ─── Workspace ─── */
-        .workspace { flex: 1; overflow: hidden; min-height: 0; }
-
-        /* ─── Verbal Layout ─── */
-        .verbal-layout { height: 100%; display: grid; grid-template-columns: 1fr 1fr; }
-        .interviewer-panel {
-          background: rgba(8,8,14,0.6); border-right: 1px solid rgba(255,255,255,0.06);
-          display: flex; flex-direction: column; align-items: center; justify-content: center;
-          padding: 32px 40px; gap: 24px;
-        }
-        .avatar-section { display: flex; align-items: center; justify-content: center; }
-        .interviewer-status { font-size: 0.82rem; min-height: 20px; text-align: center; }
-        .candidate-panel {
-          display: flex; flex-direction: column; padding: 24px; gap: 16px;
-          overflow-y: auto; background: rgba(5,5,8,0.4);
-        }
-        .camera-section { flex-shrink: 0; }
-
-        /* ─── Coding Layout ─── */
-        .coding-layout { display: flex; height: 100%; }
-
-        /* Problem Panel */
-        .problem-panel {
-          width: 36%; min-width: 240px; max-width: 400px;
-          background: rgba(255,255,255,0.02);
-          border-right: 1px solid rgba(255,255,255,0.06);
-          padding: 16px; overflow-y: auto; flex-shrink: 0;
-          display: flex; flex-direction: column; gap: 12px;
-        }
-        .problem-head {
-          display: flex; align-items: center; justify-content: space-between;
-          border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 9px;
-        }
-        .problem-title { font-size: 0.95rem; font-weight: 700; color: rgba(255,255,255,0.88); }
-        .problem-desc {
-          font-size: 0.84rem; color: rgba(255,255,255,0.5); line-height: 1.8; margin: 0;
-          white-space: pre-wrap;
-        }
-        .section-label {
-          font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.8px;
-          color: rgba(255,255,255,0.25); margin-bottom: 6px; font-weight: 700;
-        }
-        .constraints-box {
-          background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
-          border-radius: 8px; padding: 10px 12px;
-        }
-        .constraint-item { font-size: 0.78rem; color: rgba(255,255,255,0.4); padding: 1px 0; }
-
-        /* Test Cases (examples) */
-        .testcases-section { display: flex; flex-direction: column; gap: 8px; }
-        .example-box {
-          background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
-          border-radius: 9px; padding: 10px 12px; display: flex; flex-direction: column; gap: 5px;
-        }
-        .example-num { font-size: 0.65rem; font-weight: 700; color: rgba(255,255,255,0.25); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
-        .case-row { display: flex; align-items: baseline; gap: 8px; }
-        .case-key { font-size: 0.72rem; color: rgba(255,255,255,0.25); min-width: 46px; flex-shrink: 0; }
-        .case-val {
-          font-family: 'Fira Code', monospace; font-size: 0.78rem;
-          color: rgba(255,255,255,0.75); background: rgba(255,255,255,0.05);
-          padding: 1px 6px; border-radius: 4px; word-break: break-all;
-        }
-
-        .expired-banner {
-          background: rgba(248,113,113,0.07); border: 1px solid rgba(248,113,113,0.2);
-          color: #fca5a5; padding: 7px 10px; border-radius: 8px; font-size: 0.8rem;
-        }
-        .q-dots { display: flex; align-items: center; gap: 8px; }
-        .q-dot {
-          width: 9px; height: 9px; border-radius: 50%;
-          background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15);
-          transition: all 0.3s;
-        }
-        .q-done { background: rgba(74,222,128,0.4); border-color: #4ade80; }
-        .q-cur  { background: rgba(168,85,247,0.5); border-color: #a855f7; }
-        .q-dot-label { font-size: 0.72rem; color: rgba(255,255,255,0.25); margin-left: 2px; }
-        .coding-camera { margin-top: auto; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.05); }
-
-        /* Editor + Results column */
-        .editor-column { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
-        .editor-area { flex: 1; overflow: hidden; min-height: 0; }
-
-        /* Results area */
-        .results-area {
-          flex-shrink: 0; display: flex; flex-direction: column;
-          border-top: 1px solid rgba(255,255,255,0.07);
-          background: rgba(5,5,8,0.9);
-          height: 32px; transition: height 0.25s ease;
-        }
-        .results-area.results-open { height: 260px; }
-        .results-toggle {
-          width: 100%; background: none; border: none; cursor: pointer;
-          display: flex; align-items: center; gap: 10px; padding: 0 14px;
-          height: 32px; color: rgba(255,255,255,0.35); font-size: 0.78rem;
-          justify-content: space-between;
-        }
-        .results-toggle:hover { color: rgba(255,255,255,0.6); }
-        .results-toggle-close {
-          width: 100%; background: none; border: none; cursor: pointer;
-          display: flex; align-items: center; padding: 0 14px;
-          height: 32px; color: rgba(255,255,255,0.3); font-size: 0.72rem;
-          border-bottom: 1px solid rgba(255,255,255,0.05); flex-shrink: 0;
-        }
-        .results-toggle-close:hover { color: rgba(255,255,255,0.55); }
-
+      <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
-
-        @media (max-width: 768px) {
-          .verbal-layout { grid-template-columns: 1fr; }
-          .interviewer-panel { border-right: none; border-bottom: 1px solid rgba(255,255,255,0.06); padding: 24px; }
-          .coding-layout { flex-direction: column; }
-          .problem-panel { width: 100%; max-width: 100%; height: 40%; border-right: none; border-bottom: 1px solid rgba(255,255,255,0.06); }
-        }
+        * { box-sizing: border-box; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #3c3c3c; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #5c5c5c; }
       `}</style>
     </div>
+  );
+}
+
+function Spinner({ color }: { color: string }) {
+  return (
+    <span style={{
+      display: 'inline-block', width: 12, height: 12,
+      border: `2px solid ${color}40`, borderTopColor: color,
+      borderRadius: '50%', animation: 'spin 0.7s linear infinite', flexShrink: 0,
+    }} />
   );
 }
