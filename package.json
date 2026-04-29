@@ -1,0 +1,30 @@
+{
+  "name": "ai_interview_bycursor",
+  "version": "1.0.0",
+  "description": "> **Simulate real FAANG-style interviews with AI.** Voice round → DSA coding → automated report card. Built with Groq LLaMA, Whisper, Socket.IO, and Next.js.",
+  "main": "test-runner.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "build": "cd backend && npm install && npm run build",
+    "start": "cd backend && npm start",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shivansh987654321/AI_Interviwer1.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/shivansh987654321/AI_Interviwer1/issues"
+  },
+  "homepage": "https://github.com/shivansh987654321/AI_Interviwer1#readme",
+  "dependencies": {
+    "form-data": "^4.0.5",
+    "socket.io-client": "^4.8.3"
+  }
+}
