@@ -5,13 +5,9 @@ import os from 'os';
 import { randomUUID } from 'crypto';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import ffmpeg from 'fluent-ffmpeg';
+import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 
 const execAsync = promisify(exec);
-import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
-
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
-import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import dotenv from 'dotenv';
 import { DSAQuestion, DSATestCase, EvaluationResult, StarterCode, TestCaseResult } from '../types/interview.types';
 import { QuestionMeta } from '../data/question-bank';
@@ -352,16 +348,9 @@ class AIService {
       // 1. Write the raw browser buffer to temp WebM file
       fs.writeFileSync(tempInPath, audioBuffer);
 
-      // 2. Browser WebM files lack proper duration headers. OpenAI's Whisper fixes this automatically,
-      // but Groq's API instantly rejects them as "invalid media files" (400).
-      // Converting to MP3 via ffmpeg purges corrupt headers and forces a clean file.
-      await new Promise<void>((resolve, reject) => {
-        ffmpeg(tempInPath)
-          .toFormat('mp3')
-          .on('error', (err: any) => reject(err))
-          .on('end', () => resolve())
-          .save(tempOutPath);
-      });
+      // 2. Convert webm→mp3 using system ffmpeg (available on Linux/Render/macOS).
+      // Groq Whisper rejects raw browser WebM; converting fixes corrupt duration headers.
+      await execAsync(`ffmpeg -y -i "${tempInPath}" -ar 16000 -ac 1 -b:a 64k "${tempOutPath}"`);
 
       // 3. Send the clean MP3 to the STT API
       const transcription = await this.chatClient.audio.transcriptions.create({
