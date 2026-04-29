@@ -97,6 +97,7 @@ export default function VoiceAssistant({
   const onDifficultyRef     = useRef(onDifficultyChange);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || apiEndpoint;
+  const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || apiUrl;
 
   // keep refs in sync
   useEffect(() => { aiStateRef.current = aiState; }, [aiState]);
@@ -154,8 +155,7 @@ export default function VoiceAssistant({
     setConnectionStatus('connecting');
     if (socketRef.current) socketRef.current.disconnect();
 
-    const socket = io(apiUrl, {
-      withCredentials: true,
+    const socket = io(socketUrl, {
       transports: ['polling', 'websocket'],
       reconnectionAttempts: 5,
       auth: userId ? { userId } : {},
